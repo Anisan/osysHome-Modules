@@ -1,0 +1,46 @@
+{% extends "layouts/module_admin.html" %}
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="Modules">Modules</a></li>
+<li class="breadcrumb-item">{{name}}</li>
+{% endblock %}
+{% block module %}
+{% if form.errors %}
+    <ul>
+    {% for field, errors in form.errors.items() %}
+        {% for error in errors %}
+            <li>{{field}}: {{ error }}</li>
+        {% endfor %}
+    {% endfor %}
+    </ul>
+{% endif %}
+
+<form id="form" method="POST">
+    <!-- Поля формы -->
+    {{ form.hidden_tag() }}
+    <div class="mb-3">
+        <div class="mb-3">
+            {{ form.title.label(class="form-label") }}
+            {{ form.title(class="form-control") }}
+        </div>
+        <div class="mb-3">
+            {{ form.category.label(class="form-label") }}
+            {{ form.category(class="form-control") }}
+        </div>
+        <div class="mb-3">
+            {{ form.hidden.label(class="form-label") }}
+            {{ form.hidden(class="form-check") }}
+        </div>
+        <div class="mb-3">
+            {{ form.active.label(class="form-label") }}
+            {{ form.active(class="form-check") }}
+        </div>
+        <div class="mb-3">
+            {{ form.url.label(class="form-label") }}
+            {{ form.url(class="form-control") }}
+        </div>
+    </div>
+    <!-- Кнопка отправки формы -->
+    <button type="submit" class="btn btn-primary">Submit</button>
+    <a href="Modules" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

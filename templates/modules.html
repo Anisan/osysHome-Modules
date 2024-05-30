@@ -1,0 +1,80 @@
+{% extends "layouts/module_admin.html" %}
+
+{% block title %} UI Buttons {% endblock %} 
+
+<!-- Specific CSS goes HERE -->
+{% block stylesheets %}{% endblock stylesheets %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="Modules">Modules</a></li>
+{% endblock %}
+
+<!-- [ Main Content ] start -->
+{% block module %}
+
+<!-- [ Main Content ] start -->
+<div class="pcoded-main-container">
+    <div class="pcoded-wrapper">
+    <ol class="list-group">
+        {% for plugin in plugins %}
+        <li class="list-group-item d-flex justify-content-between align-items-start
+            {%if not plugin.active%} list-group-item-danger{%endif%}
+            {%if plugin.hidden%} list-group-item-secondary{%endif%}
+            {%if not plugin.installed%} list-group-item-warning{%endif%}">
+            <div class="ms-2 me-auto">
+                <div class="fw-bold">
+                    <a href="/admin/{{plugin.name}}">{{ plugin.title }}</a>
+                    {% for action in plugin.actions %}
+                    <span class="badge bg-success">{{action}}</span>
+                    {% endfor %}
+                    <a href="/docs/plugins/{{plugin.name}}.html" target="_blank"><i class="fas fa-info-circle"></i></a>
+                </div>
+                {%if plugin.active%}
+                {{ plugin.description }} (version - {{ plugin.version }})
+                {%endif%}
+            </div>
+            {%if plugin.active%}
+                {% if 'cycle' in plugin.actions %}
+                <a href="#" class="btn btn-warning me-1" onclick="reloadCycle('{{ plugin.name }}')">Reload cycle</a>
+                {% endif %}
+            {%endif%}
+            {% if plugin.new == True %}
+            <a href="?op=upgrade&name={{plugin.name}}" class="btn btn-success me-1">Upgrade</a>
+            {%endif%}
+            <a href="?op=settings&name={{plugin.name}}" class="btn btn-secondary">Settings</a>
+        </li>
+        {% endfor %}
+    </ol>
+
+    </div>
+    <script>
+        function reloadPlugin(pluginName) {
+            $.ajax({
+                type: "GET",
+                url: "/reload-plugin/" + pluginName,
+                success: function(response) {
+                    alert(response); // Оповещение о результате перезагрузки
+                },
+                error: function(xhr, status, error) {
+                    alert("Error: " + error); // Вывод ошибки, если что-то пошло не так
+                }
+            });
+        }
+        function reloadCycle(pluginName) {
+            $.ajax({
+                type: "GET",
+                url: "/restart-plugin/" + pluginName,
+                success: function(response) {
+                    alert(response); // Оповещение о результате перезагрузки
+                },
+                error: function(xhr, status, error) {
+                    alert("Error: " + error); // Вывод ошибки, если что-то пошло не так
+                }
+            });
+        }
+    </script>
+</div>
+{% endblock %}
+
+<!-- Specific Page JS goes HERE  -->
+{% block javascripts %}{% endblock javascripts %}
