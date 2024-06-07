@@ -19,6 +19,7 @@ class Modules(BasePlugin):
         self.title = "Modules"
         self.description = """List modules"""
         self.category = "System"
+        self.actions=["search"]
     
     def initialization(self):
         pass
@@ -73,17 +74,19 @@ class Modules(BasePlugin):
                 if item["url"]:
                     owner, repo = self.extract_owner_and_repo(item['url'])
                     adv_info = self.get_github_repo_info(owner,repo)
-                    info = { 
-                        "owner": owner,
-                        "repo": repo,
-                        "updated": datetime.datetime.strptime(adv_info['updated_at'], "%Y-%m-%dT%H:%M:%SZ")
-                    }
-                    item['info'] = info
-                    if item["updated"]:
-                        if item["updated"] < item['info']['updated']:
+                    if adv_info:
+                        info = { 
+                            "owner": owner,
+                            "repo": repo,
+                        }
+                        if 'updated_at' in adv_info:
+                            info["updated"] = datetime.datetime.strptime(adv_info['updated_at'], "%Y-%m-%dT%H:%M:%SZ")
+                        item['info'] = info
+                        if item["updated"]:
+                            if item["updated"] < item['info']['updated']:
+                                item["new"] = True
+                        else:
                             item["new"] = True
-                    else:
-                        item["new"] = True
             else:
                 item["title"] = item["name"]
         content = {
@@ -155,3 +158,10 @@ class Modules(BasePlugin):
         os.remove(local_filename)
         self.logger.info(f"Removed {local_filename}")
 
+    def search(self, query: str) -> str:
+        res = []
+        for key,plugin in plugins.items():
+            instance = plugin['instance']
+            if query.lower() in key.lower() or query.lower() in instance.title.lower() or query.lower() in instance.description.lower():
+                res.append({"url":key, "title":f'{instance.title} ({instance.description})', "tags":[{"name":"Module","color":"primary"}]})
+        return res
