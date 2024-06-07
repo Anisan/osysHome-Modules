@@ -66,7 +66,7 @@ class Modules(BasePlugin):
                     item["actions"] = module["instance"].actions
                     item["alive"] = module["instance"].is_alive()
                     if "cycle" in item["actions"]:
-                        item["updated"] = module["instance"].dtUpdated
+                        item["updatedCycle"] = module["instance"].dtUpdated
                 else:
                     item["installed"] = False
 
