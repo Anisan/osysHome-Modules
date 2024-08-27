@@ -1,16 +1,20 @@
-import requests, re
+import requests
+import re
 import zipfile
 import os
 import datetime
 import shutil
+import subprocess
 from settings import Config
 from flask import render_template, redirect
 from app.core.main.BasePlugin import BasePlugin
 from app.core.main.PluginsHelper import plugins
 from app.core.models.Plugins import Plugin
-from app.database import db, row2dict
+from app.database import db
 from app.core.lib.common import addNotify, CategoryNotify
+from app.core.lib.object import setProperty
 from plugins.Modules.forms.ModuleForm import routeSettings
+from app.api import api
 
 class Modules(BasePlugin):
 
@@ -19,7 +23,11 @@ class Modules(BasePlugin):
         self.title = "Modules"
         self.description = """List modules"""
         self.category = "System"
-        self.actions=["search"]
+        self.actions = ["search"]
+
+        from plugins.Modules.api import create_api_ns
+        api_ns = create_api_ns()
+        api.add_namespace(api_ns, path="/Modules")
     
     def initialization(self):
         pass
@@ -39,7 +47,8 @@ class Modules(BasePlugin):
 
             owner, repo = self.extract_owner_and_repo(url)
             try:
-                self.download_and_extract_github_repo(owner, repo, "master", os.path.join(Config.PLUGINS_FOLDER,name))
+                info = self.get_github_repo_info(owner, repo)
+                self.download_and_extract_github_repo(owner, repo, info['default_branch'], os.path.join(Config.PLUGINS_FOLDER,name))
                 module.updated = datetime.datetime.now()
                 db.session.commit()
                 addNotify("Success update",f'Success update module {name}',CategoryNotify.Info,self.name)
@@ -49,50 +58,42 @@ class Modules(BasePlugin):
 
             return redirect(self.name)
 
-        rows = Plugin.query.all()
-        rows = list(map(lambda x: row2dict(x), rows))
-        
-        for item in rows:
-            if item["active"]:
-                if item["name"] in plugins:
-                    module = plugins[item['name']]
-                    item["installed"] = True
-                    if not item['title']:
-                        item["title"] = module["instance"].title
-                    if not item['category']:
-                        item["category"] = module["instance"].category
-                    item["description"] = module["instance"].description
-                    item["version"] = module["instance"].version
-                    item["actions"] = module["instance"].actions
-                    item["alive"] = module["instance"].is_alive()
-                    if "cycle" in item["actions"]:
-                        item["updatedCycle"] = module["instance"].dtUpdated
-                else:
-                    item["installed"] = False
+        if op == 'upgrade_core':
+            owner = 'Anisan'
+            repo = 'osysHome'
+            branch = 'master'
+            try:
+                self.download_and_extract_github_repo(owner, repo, branch, os.path.join(Config.APP_DIR))
+                setProperty("SystemVar.upgraded",datetime.datetime.now(),self.name)
+                addNotify("Success update", 'Success update osysHome',CategoryNotify.Info,self.name)
+            except Exception as ex:
+                self.logger.exception(ex)
+                addNotify("Error update", 'Error update osysHome',CategoryNotify.Error,self.name)
 
-                item["new"] = False
-                if item["url"]:
-                    owner, repo = self.extract_owner_and_repo(item['url'])
-                    adv_info = self.get_github_repo_info(owner,repo)
-                    if adv_info:
-                        info = { 
-                            "owner": owner,
-                            "repo": repo,
-                        }
-                        if 'updated_at' in adv_info:
-                            info["updated"] = datetime.datetime.strptime(adv_info['updated_at'], "%Y-%m-%dT%H:%M:%SZ")
-                        item['info'] = info
-                        if item["updated"]:
-                            if item["updated"] < item['info']['updated']:
-                                item["new"] = True
-                        else:
-                            item["new"] = True
-            else:
-                item["title"] = item["name"]
-        content = {
-            "plugins": rows,
-        }
-        return render_template("modules.html", **content)
+            return redirect(self.name)
+    
+        if op == 'install':
+            name = request.args.get('name',None)
+            owner = request.args.get('author',None)
+            repo = 'osysHome-' + name
+            
+            try:
+                info = self.get_github_repo_info(owner, repo)
+                self.download_and_extract_github_repo(owner, repo, info['default_branch'], os.path.join(Config.PLUGINS_FOLDER,name))
+                module = Plugin()
+                module.name = name
+                module.updated = datetime.datetime.now()
+                module.url = f'https://github.com/{owner}/{repo}'
+                module.save()
+                db.session.commit()
+                addNotify("Success install",f'Success install module {name}',CategoryNotify.Info,self.name)
+            except Exception as ex:
+                self.logger.exception(ex)
+                addNotify("Error install",f'Error install module {name}',CategoryNotify.Error,self.name)
+
+            return redirect(self.name)
+  
+        return render_template("modules.html")
         
     def extract_owner_and_repo(self, url):
         pattern = r"https://github\.com/([^/]+)/([^/]+)"
@@ -128,7 +129,6 @@ class Modules(BasePlugin):
         else:
             raise Exception(f"Failed to download the file: {response.status_code}")
             
-        
         # Создание целевой папки
         os.makedirs(target_folder, exist_ok=True)
         
@@ -157,6 +157,21 @@ class Modules(BasePlugin):
         # Удаление загруженного архива
         os.remove(local_filename)
         self.logger.info(f"Removed {local_filename}")
+
+        # Полный путь к файлу requirements.txt
+        requirements_file = os.path.join(target_folder, 'requirements.txt')
+
+        # Проверяем наличие файла requirements.txt
+        if os.path.isfile(requirements_file):
+            self.logger.info(f"File {requirements_file} found. Install packets...")
+            # Устанавливаем пакеты из requirements.txt с помощью pip
+            result = subprocess.run(['pip', 'install', '-r', requirements_file], capture_output=True, text=True)
+            if result.returncode == 0:
+                self.logger.info("Packets installed.")
+            else:
+                self.logger.error("Error install packets: %s", result.stderr)
+        else:
+            self.logger.info(f"File {requirements_file} not found.")
 
     def search(self, query: str) -> str:
         res = []
