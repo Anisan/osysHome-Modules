@@ -42,7 +42,8 @@
                     <div class="ms-2 me-auto">
                         <div class="fw-bold">
                             <img :src="'/'+plugin.name+'/static/'+plugin.name+'.png'" height="25px" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'">
-                            <a :href="'/admin/'+plugin.name">[[ plugin.title ]]</a>
+                            <a v-if="plugin.title" :href="'/admin/'+plugin.name">[[ plugin.title ]]</a>
+                            <a v-else :href="'/admin/'+plugin.name">[[ plugin.name ]]</a>
                             <span v-for="action in plugin.actions" class="badge bg-success">[[action]]</span>
                             <span v-if="plugin.stars"><i class="text-warning fa-solid fa-star ms-1"></i>[[plugin.stars]]</span>
                             <a v-if="plugin.url" :href="plugin.url" style="text-decoration: none;color:black;" target="_blank"><i class="fab fa-github mx-1"></i></a>
