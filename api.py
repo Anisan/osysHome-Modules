@@ -1,4 +1,5 @@
-from flask_restx import Namespace, Resource
+from flask import  request
+from flask_restx import Namespace, Resource, fields
 from app.api.decorators import api_key_required, role_required
 from app.api.models import model_404, model_result
 from app.core.models.Plugins import Plugin
@@ -11,10 +12,87 @@ _api_ns = Namespace(name="Modules", description="Modules namespace", validate=Tr
 response_result = _api_ns.model("Result", model_result)
 response_404 = _api_ns.model("Error", model_404)
 
+# Модель данных для Swagger
+module_model = _api_ns.model('Module', {
+    'name': fields.String(required=True, description='The name of the module')
+})
 
 def create_api_ns():
     return _api_ns
 
+@_api_ns.route("/cycle/start")
+class StartCycle(Resource):
+    @api_key_required
+    @role_required("admin")
+    @_api_ns.doc(security="apikey")
+    @_api_ns.expect(module_model)
+    def post(self):
+        """
+        Start cycle by name module.
+        """
+        data = request.json
+        module_name = data.get('name')
+
+        if not module_name:
+            return {"message": "Service name is required"}, 400
+
+        if module_name in plugins:
+            module = plugins[module_name]
+            if module["instance"].is_alive():
+                return {"message": f"Cycle '{module_name}' is already running", "status": "ok"}, 200
+            module["instance"].start_cycle()
+            return {"message": f"Cycle '{module_name}' started", "status": "ok"}, 200
+        else:
+            return {"message": f"Module '{module_name}' not found", "status": "error"}, 404
+
+
+@_api_ns.route("/cycle/stop")
+class StopCycle(Resource):
+    @api_key_required
+    @role_required("admin")
+    @_api_ns.doc(security="apikey")
+    @_api_ns.expect(module_model)
+    def post(self):
+        """
+        Stop cycle by name module.
+        """
+        data = request.json
+        module_name = data.get('name')
+
+        if not module_name:
+            return {"message": "Service name is required"}, 400
+
+        if module_name in plugins:
+            module = plugins[module_name]
+            if not module["instance"].is_alive():
+                return {"message": f"Cycle '{module_name}' is already stopped", "status": "ok"}, 200
+            module["instance"].stop_cycle()
+            return {"message": f"Cycle '{module_name}' stopped", "status": "ok"}, 200
+        else:
+            return {"message": f"Module '{module_name}' not found", "status": "error"}, 404
+
+@_api_ns.route("/cycle/restart")
+class RestartCycle(Resource):
+    @api_key_required
+    @role_required("admin")
+    @_api_ns.doc(security="apikey")
+    def post(self):
+        """
+        Restart cycle by name module.
+        """
+        data = request.json
+        module_name = data.get('name')
+
+        if not module_name:
+            return {"message": "Service name is required"}, 400
+
+        if module_name in plugins:
+            module = plugins[module_name]
+            module["instance"].stop_cycle()
+            module["instance"].start_cycle()
+            return {"message": f"Cycle '{module_name}' stopped", "status": "ok"}, 200
+        else:
+            return {"message": f"Module '{module_name}' not found", "status": "error"}, 404
 
 @_api_ns.route("/plugins")
 class GetPlugins(Resource):

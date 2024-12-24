@@ -54,10 +54,14 @@
                         </span>
                         <div v-if="plugin.author && plugin.author!='Undefined'">Author: <b>[[plugin.author]]</b></div>
                     </div>
-                    <a v-if="plugin.new" :href="'?op=upgrade&name='+plugin.name" class="btn btn-success me-1">Upgrade</a>
                     <span v-if="plugin.actions">
-                        <a v-if="plugin.actions.includes('cycle')" href="#" class="btn btn-warning me-1" @click="reloadCycle(plugin.name)">Reload cycle</a>
+                      <span v-if="plugin.actions.includes('cycle')">
+                        <button v-if="!plugin.alive" class="btn btn-success me-1" @click="startCycle(plugin)">Start cycle</button>
+                        <button v-if="plugin.alive" class="btn btn-danger me-1" @click="stopCycle(plugin)">Stop cycle</button>
+                        <button v-if="plugin.alive" class="btn btn-warning me-1" @click="reloadCycle(plugin)">Reload cycle</button>
+                      </span>
                     </span>
+                    <a v-if="plugin.new" :href="'?op=upgrade&name='+plugin.name" class="btn btn-success me-1">Upgrade</a>
                     <a :href="'?op=settings&name='+plugin.name" class="btn btn-secondary">Settings</a>
                 </li>
                 
@@ -227,6 +231,33 @@
             return '';
           }
         },
+        async startCycle(plugin){
+          payload = {
+            "name" : plugin.name
+          }
+          const response = await axios.post('/api/Modules/cycle/start',payload)
+          console.log(response)
+          if (response.data.status == 'ok')
+            plugin.alive = true
+        },
+        async stopCycle(plugin){
+          payload = {
+            "name" : plugin.name
+          }
+          const response = await axios.post('/api/Modules/cycle/stop',payload)
+          console.log(response)
+          if (response.data.status == 'ok')
+            plugin.alive = false
+        },
+        async reloadCycle(plugin){
+          payload = {
+            "name" : plugin.name
+          }
+          const response = await axios.post('/api/Modules/cycle/restart',payload)
+          console.log(response)
+          if (response.data.status == 'ok')
+            plugin.alive = true
+        }
       }
     });
   </script>
