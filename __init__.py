@@ -165,7 +165,7 @@ class Modules(BasePlugin):
         if os.path.isfile(requirements_file):
             self.logger.info(f"File {requirements_file} found. Install packets...")
             # Устанавливаем пакеты из requirements.txt с помощью pip
-            result = subprocess.run(['pip', 'install', '-r', requirements_file], capture_output=True, text=True)
+            result = subprocess.run(['venv/bin/pip', 'install', '-r', requirements_file], capture_output=True, text=True)
             if result.returncode == 0:
                 self.logger.info("Packets installed.")
             else:

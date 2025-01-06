@@ -35,10 +35,10 @@
                         <div>[[ osyshome.description ]]</div>
                         <div>Author: <b>[[osyshome.author]]</b></div>
                     </div>
-                    <a v-if="osyshome.new" href="'?op=upgrade_core" class="btn btn-success">Upgrade</a>
+                    <a v-if="osyshome.new" href="?op=upgrade_core" class="btn btn-success">Upgrade</a>
                 </li>
                 <hr>
-                <li v-for="plugin in plugins" class="list-group-item d-flex justify-content-between align-items-start">
+                <li v-for="plugin in plugins" class="list-group-item d-flex justify-content-between align-items-start" :style=" !plugin.active ? 'background-color: #eaecee  ;':''">
                     <div class="ms-2 me-auto">
                         <div class="fw-bold">
                             <img :src="'/'+plugin.name+'/static/'+plugin.name+'.png'" height="25px" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'">
@@ -198,8 +198,11 @@
                     }
                     else{
                         if (element.name == 'osysHome'){
-                          if (Date.parse(this.osyshome.updated) < Date.parse(element.updated_at))
+                          if (this.osyshome.updated == null)
                             this.osyshome.new = true
+                          else
+                            if (Date.parse(this.osyshome.updated) < Date.parse(element.updated_at))
+                              this.osyshome.new = true
                           Vue.set(this.osyshome, 'stars', element.stargazers_count);
                         }
                         else

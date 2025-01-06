@@ -1,3 +1,4 @@
+import datetime
 from flask import  request
 from flask_restx import Namespace, Resource, fields
 from app.api.decorators import api_key_required, role_required
@@ -128,6 +129,9 @@ class GetPlugins(Resource):
                         item["installed"] = False
                 else:
                     item["title"] = item["name"]
+            updated = getProperty("SystemVar.upgraded")
+            if updated is None or updated is False:
+                updated = datetime.datetime.now() - datetime.timedelta(10000)
             osysHome = {
                 "title": "osysHome",
                 "name": "osysHome",
@@ -135,7 +139,7 @@ class GetPlugins(Resource):
                 "topic":["core","smarthome"],
                 "new": False,
                 "author":"Eraser",
-                "updated":getProperty("SystemVar.updated"),
+                "updated": updated,
                 "url":"https://github.com/Anisan/osysHome",
             }
             return {"success": True, "result": result, "osysHome":osysHome}, 200
