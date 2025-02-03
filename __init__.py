@@ -52,6 +52,7 @@ class Modules(BasePlugin):
                 module.updated = datetime.datetime.now()
                 db.session.commit()
                 addNotify("Success update",f'Success update module {name}',CategoryNotify.Info,self.name)
+                setProperty("SystemVar.NeedRestart", True, self.name)
             except Exception as ex:
                 self.logger.exception(ex)
                 addNotify("Error update",f'Error update module {name}',CategoryNotify.Error,self.name)
@@ -66,6 +67,7 @@ class Modules(BasePlugin):
                 self.download_and_extract_github_repo(owner, repo, branch, os.path.join(Config.APP_DIR))
                 setProperty("SystemVar.upgraded",datetime.datetime.now(),self.name)
                 addNotify("Success update", 'Success update osysHome',CategoryNotify.Info,self.name)
+                setProperty("SystemVar.NeedRestart", True, self.name)
             except Exception as ex:
                 self.logger.exception(ex)
                 addNotify("Error update", 'Error update osysHome',CategoryNotify.Error,self.name)
