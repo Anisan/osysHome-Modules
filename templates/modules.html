@@ -15,84 +15,115 @@
 <!-- [ Main Content ] start -->
 <script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-<div id="list_tasks">
+<div id="list_modules">
+  <div class="d-flex justify-content-between mb-2">
+    <button  class="btn btn-primary btn-sm d-flex align-items-center me-3" type="button" @click="fetchData()">
+      <span v-if="loading" class="fas fa-rotate fa-spin me-2"></span>
+      <span v-else class="fas fa-rotate me-2"></span>
+      Refresh
+    </button >
+    <div class="input-group">
+      <input v-model="search" type="text" class="form-control" placeholder="Filter...">
+      <button class="btn btn-outline-secondary" type="button" @click="search=null"><i class="fa-solid fa-broom"></i></button>
+    </div>
+  </div>
 
     <ul class="nav nav-tabs mb-3" id="configTabs" role="tablist">
         <li class="nav-item"><a class="nav-link tab-button active" href="#installed" data-bs-toggle="tab" role="tab">Installed</a></li>
         <li class="nav-item"><a class="nav-link tab-button" href="#uninstalled" data-bs-toggle="tab" role="tab">Available</a></li>
     </ul>
     <div class="tab-content" id="myTabContent">
-        <div class="tab-pane fade show active" id="installed" role="tabpanel" aria-labelledby="general-tab">
-            <ol class="list-group">
-                <li v-if="osyshome" class="list-group-item d-flex justify-content-between align-items-start">
-                    <div class="ms-2 me-auto">
-                        <div class="fw-bold">
-                            <img src="{{ config.ASSETS_ROOT }}/images/logo-dark.png" height="25px" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'">
-                            <a :href="osyshome.url" target="_blank">[[ osyshome.name ]]</a>
-                            <span v-for="topic in osyshome.topic" class="badge bg-secondary">[[topic]]</span>
-                            <span v-if="osyshome.stars"><i class="text-warning fa-solid fa-star ms-1"></i>[[osyshome.stars]]</span>
-                        </div>
-                        <div>[[ osyshome.description ]]</div>
-                        <div>Author: <b>[[osyshome.author]]</b></div>
+      <div class="tab-pane fade show active" id="installed" role="tabpanel" aria-labelledby="general-tab">
+        <div class="row mx-1">
+          <div class="col-sm-12 col-md-6 col-lg-4 col-xl-3 mb-2 px-1">
+            <div class="card p-2" style="height:100%;" v-if="osyshome">
+              <div class="d-flex justify-content-between align-items-start">
+                <div class="ms-2 me-auto">
+                  <div class="fw-bold">
+                    <img src="{{ config.ASSETS_ROOT }}/images/logo-dark.png" height="25px" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'">
+                    <a :href="osyshome.url" target="_blank">[[ osyshome.name ]]</a>
+                    <span v-for="topic in osyshome.topic" class="badge bg-secondary">[[topic]]</span>
+                    <span v-if="osyshome.stars"><i class="text-warning fa-solid fa-star ms-1"></i>[[osyshome.stars]]</span>
+                  </div>
+                  <div>[[ osyshome.description ]]</div>
+                  <div>Author: <b>[[osyshome.author]]</b></div>
+                </div>
+                <a v-if="osyshome.new" href="?op=upgrade_core" class="btn btn-success"><i class="fa-solid fa-upload"></i> Upgrade</a>
+              </div>
+            </div>
+          </div>
+        </div>
+        <hr>
+        <div class="row mx-1">
+          <div class="col-sm-12 col-md-6 col-lg-4 col-xl-3 mb-2 px-1" v-for="(plugin,index) in filteredPlugins">
+            <div class="card p-2" style="height:100%;" id="widgetPlugin_{{index}}" :style="!plugin.active ? 'background-color: #eaecee;' : ''">
+              <div class="d-flex flex-column" style="height: 100%;">
+                <!-- Верхний блок с контентом -->
+                <div class="d-flex flex-grow-1 align-items-start1">
+                  <!-- Основной контент слева -->
+                  <div class="flex-grow-1 me-3">
+                    <div class="fw-bold">
+                      <img :src="'/'+plugin.name+'/static/'+plugin.name+'.png'" height="25px" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'">
+                      <a v-if="plugin.title" :href="'/admin/'+plugin.name">[[ plugin.title ]]</a>
+                      <a v-else :href="'/admin/'+plugin.name">[[ plugin.name ]]</a>
+                      <span v-for="action in plugin.actions" class="badge bg-success">[[action]]</span>
+                      <span v-if="plugin.stars"><i class="text-warning fa-solid fa-star ms-1"></i>[[plugin.stars]]</span>
+                      <a v-if="plugin.url" :href="plugin.url" style="text-decoration: none;color:black;" target="_blank"><i class="fab fa-github mx-1"></i></a>
+                      <a :href="'/docs/plugins/'+plugin.name+'.html'" target="_blank"><i class="fas fa-info-circle"></i></a>
                     </div>
-                    <a v-if="osyshome.new" href="?op=upgrade_core" class="btn btn-success">Upgrade</a>
-                </li>
-                <hr>
-                <li v-for="plugin in plugins" class="list-group-item d-flex justify-content-between align-items-start" :style=" !plugin.active ? 'background-color: #eaecee  ;':''">
-                    <div class="ms-2 me-auto">
-                        <div class="fw-bold">
-                            <img :src="'/'+plugin.name+'/static/'+plugin.name+'.png'" height="25px" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'">
-                            <a v-if="plugin.title" :href="'/admin/'+plugin.name">[[ plugin.title ]]</a>
-                            <a v-else :href="'/admin/'+plugin.name">[[ plugin.name ]]</a>
-                            <span v-for="action in plugin.actions" class="badge bg-success">[[action]]</span>
-                            <span v-if="plugin.stars"><i class="text-warning fa-solid fa-star ms-1"></i>[[plugin.stars]]</span>
-                            <a v-if="plugin.url" :href="plugin.url" style="text-decoration: none;color:black;" target="_blank"><i class="fab fa-github mx-1"></i></a>
-                            <a :href="'/docs/plugins/'+plugin.name+'.html'" target="_blank"><i class="fas fa-info-circle"></i></a>
-                        </div>
-                        <span v-if="plugin.active">
-                        [[ plugin.description ]] (version - [[ plugin.version ]])
-                        </span>
-                        <div v-if="plugin.author && plugin.author!='Undefined'">Author: <b>[[plugin.author]]</b></div>
-                    </div>
-                    <span v-if="plugin.actions">
-                      <span v-if="plugin.actions.includes('cycle')">
-                        <button v-if="!plugin.alive" class="btn btn-success me-1" @click="startCycle(plugin)">Start cycle</button>
-                        <button v-if="plugin.alive" class="btn btn-danger me-1" @click="stopCycle(plugin)">Stop cycle</button>
-                        <button v-if="plugin.alive" class="btn btn-warning me-1" @click="reloadCycle(plugin)">Reload cycle</button>
-                      </span>
+                    <span v-if="plugin.active">
+                      [[ plugin.description ]] (version - [[ plugin.version ]])
                     </span>
-                    <a v-if="plugin.new" :href="'?op=upgrade&name='+plugin.name" class="btn btn-success me-1">Upgrade</a>
-                    <a :href="'?op=settings&name='+plugin.name" class="btn btn-secondary">Settings</a>
-                </li>
-                
-            </ol>
+                    <div v-if="plugin.author && plugin.author!='Undefined'">Author: <b>[[plugin.author]]</b></div>
+                  </div>
+                  <!-- Блок с кнопками Upgrade и Settings справа -->
+                  <div class="d-flex flex-column align-items-end">
+                    <a v-if="plugin.new" :href="'?op=upgrade&name='+plugin.name" class="btn btn-success btn-sm mb-2"><i class="fa-solid fa-upload"></i> Upgrade</a>
+                    <a :href="'?op=settings&name='+plugin.name" class="btn btn-secondary btn-sm"><i class="fa-solid fa-gears"></i> Settings</a>
+                  </div>
+                </div>
+                <!-- Нижний блок с кнопками -->
+                <div class="mt-auto">
+                  <!-- Кнопки управления циклом -->
+                  <div v-if="plugin.actions && plugin.actions.includes('cycle')" class="d-flex justify-content-begin">
+                    <button v-if="!plugin.alive" class="btn btn-success btn-sm me-1" @click="startCycle(plugin)"><i class="fa-solid fa-play"></i> Start cycle</button>
+                    <button v-if="plugin.alive" class="btn btn-danger btn-sm me-1" @click="stopCycle(plugin)"><i class="fa-solid fa-stop"></i> Stop cycle</button>
+                    <button v-if="plugin.alive" class="btn btn-warning btn-sm me-1" @click="reloadCycle(plugin)"><i class="fa-solid fa-refresh"></i> Reload cycle</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="tab-pane fade" id="uninstalled" role="tabpanel">
-            <ol class="list-group">
-                <li v-for="plugin in pluginsGithub" class="list-group-item d-flex justify-content-between align-items-start">
-                    <div class="ms-2 me-auto">
-                        <div class="fw-bold">
-                            <img :src="'https://raw.githubusercontent.com/'+plugin.author+'/'+plugin.name+'/'+plugin.branch+'/static/'+plugin.shortName+'.png'" height="25px" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'">
-                            <a :href="plugin.url" target="_blank">[[ plugin.name ]]</a>
-                            <span v-for="topic in plugin.topic" class="badge bg-secondary">[[topic]]</span>
-                            <span v-if="plugin.stars"><i class="text-warning fa-solid fa-star ms-1"></i>[[plugin.stars]]</span>
-                        </div>
-                        <div>[[ plugin.description ]]</div>
-                        <div>Author: <b>[[plugin.author]]</b></div>
-                    </div>
-                    <a :href="'?op=install&name='+plugin.shortName+'&author='+plugin.author" class="btn btn-success">Install</a>
-                </li>
-            </ol>
+      </div>
+      <div class="tab-pane fade" id="uninstalled" role="tabpanel">
+        <div class="col-sm-12 col-md-6 col-lg-4 col-xl-3 mb-2 px-1" v-for="(plugin,index) in filteredPluginsGithub">
+          <div class="card p-2" style="height:100%;" id="widgetGit_{{index}}">
+            <div class="d-flex justify-content-between align-items-start">
+              <!-- Левый блок с контентом -->
+              <div>
+                <div class="fw-bold">
+                  <img :src="'https://raw.githubusercontent.com/'+plugin.author+'/'+plugin.name+'/'+plugin.branch+'/static/'+plugin.shortName+'.png'" height="25px" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'">
+                  <a :href="plugin.url" target="_blank">[[ plugin.name ]]</a>
+                  <span v-for="topic in plugin.topic" class="badge bg-secondary">[[topic]]</span>
+                  <span v-if="plugin.stars"><i class="text-warning fa-solid fa-star ms-1"></i>[[plugin.stars]]</span>
+                </div>
+                <div>[[ plugin.description ]]</div>
+                <div>Author: <b>[[plugin.author]]</b></div>
+              </div>
+              <!-- Правый блок с кнопками -->
+              <div class="d-flex flex-column align-items-end">
+                <a :href="'?op=install&name='+plugin.shortName+'&author='+plugin.author" class="btn btn-success"><i class="fa-solid fa-upload"></i> Install</a>
+              </div>
+            </div>
+          </div>
         </div>
-    </div>
-
-
-
+      </div>
 </div>
 
 <script>
     new Vue({
-      el: '#list_tasks',
+      el: '#list_modules',
       delimiters: ['[[', ']]'], // Измененные разделители
       data: {
         search: '',
@@ -105,34 +136,21 @@
         osyshome:null,
       },
       async created() {
-        await this.fetchPlugins()
-        await this.fetchGithub()
+        await this.fetchData()
       },
       mounted() {
-        if (localStorage.scheduler_search) {
-          this.search = localStorage.scheduler_search;
-        }
-        if (localStorage.scheduler_sortKey) {
-          this.sortKey = localStorage.scheduler_sortKey;
-        }
-        if (localStorage.scheduler_sortAsc) {
-          this.sortAsc = localStorage.scheduler_sortAsc;
+        if (localStorage.modules_filter) {
+          this.search = localStorage.modules_filter;
         }
       },
       watch: {
         search(value) {
-          localStorage.scheduler_search = value;
-        },
-        sortKey(value) {
-          localStorage.scheduler_sortKey = value;
-        },
-        sortAsc(value) {
-          localStorage.scheduler_sortAsc = value;
+          localStorage.modules_filter = value;
         },
       },
       computed: {
-        filteredData() {
-          let data = this.tasks;
+        filteredPlugins() {
+          let data = this.plugins;
   
           if (this.search) {
             data = data.filter(row =>
@@ -141,22 +159,26 @@
               )
             );
           }
+          return data;
+        },
+        filteredPluginsGithub() {
+          let data = this.pluginsGithub;
   
-          if (this.sortKey) {
-            data = data.slice().sort((a, b) => {
-              let aVal = a[this.sortKey];
-              let bVal = b[this.sortKey];
-  
-              if (aVal < bVal) return this.sortAsc ? -1 : 1;
-              if (aVal > bVal) return this.sortAsc ? 1 : -1;
-              return 0;
-            });
+          if (this.search) {
+            data = data.filter(row =>
+              Object.values(row).some(val =>
+                String(val).toLowerCase().includes(this.search.toLowerCase())
+              )
+            );
           }
-  
           return data;
         },
       },
       methods: {
+        async fetchData(){
+          await this.fetchPlugins()
+          await this.fetchGithub()
+        },
         async fetchPlugins() {
           this.loading = true
           const response = await axios.get(`/api/Modules/plugins`)
@@ -218,21 +240,6 @@
               this.loading = false
             })
             ;
-        },
-        sortBy(key) {
-          if (this.sortKey === key) {
-            this.sortAsc = !this.sortAsc;
-          } else {
-            this.sortKey = key;
-            this.sortAsc = true;
-          }
-        },
-        getSortClass(key) {
-          if (this.sortKey === key) {
-            return this.sortAsc ? 'sortable asc' : 'sortable desc';
-          } else {
-            return '';
-          }
         },
         async startCycle(plugin){
           payload = {
