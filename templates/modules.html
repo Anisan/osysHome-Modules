@@ -35,7 +35,7 @@
     <div class="tab-content" id="myTabContent">
       <div class="tab-pane fade show active" id="installed" role="tabpanel" aria-labelledby="general-tab">
         <div class="row mx-1">
-          <div class="col-sm-12 col-md-6 col-lg-4 col-xl-3 mb-2 px-1">
+          <div class="col-sm-12 col-md-6 col-lg-4 mb-2 px-1">
             <div class="card p-2" style="height:100%;" v-if="osyshome">
               <div class="d-flex justify-content-between align-items-start">
                 <div class="ms-2 me-auto">
@@ -55,7 +55,7 @@
         </div>
         <hr>
         <div class="row mx-1">
-          <div class="col-sm-12 col-md-6 col-lg-4 col-xl-3 mb-2 px-1" v-for="(plugin,index) in filteredPlugins">
+          <div class="col-sm-12 col-md-6 col-lg-4 mb-2 px-1" v-for="(plugin,index) in filteredPlugins">
             <div class="card p-2" style="height:100%;" id="widgetPlugin_{{index}}" :style="!plugin.active ? 'background-color: #eaecee;' : ''">
               <div class="d-flex flex-column" style="height: 100%;">
                 <!-- Верхний блок с контентом -->
@@ -88,7 +88,7 @@
                   <div v-if="plugin.actions && plugin.actions.includes('cycle')" class="d-flex justify-content-begin">
                     <button v-if="!plugin.alive" class="btn btn-success btn-sm me-1" @click="startCycle(plugin)"><i class="fa-solid fa-play"></i> Start cycle</button>
                     <button v-if="plugin.alive" class="btn btn-danger btn-sm me-1" @click="stopCycle(plugin)"><i class="fa-solid fa-stop"></i> Stop cycle</button>
-                    <button v-if="plugin.alive" class="btn btn-warning btn-sm me-1" @click="reloadCycle(plugin)"><i class="fa-solid fa-refresh"></i> Reload cycle</button>
+                    <button v-if="plugin.alive" class="btn btn-warning btn-sm me-1" @click="reloadCycle(plugin)"><i class="fa-solid fa-refresh"></i> Restart cycle</button>
                   </div>
                 </div>
               </div>
@@ -97,7 +97,7 @@
         </div>
       </div>
       <div class="tab-pane fade" id="uninstalled" role="tabpanel">
-        <div class="col-sm-12 col-md-6 col-lg-4 col-xl-3 mb-2 px-1" v-for="(plugin,index) in filteredPluginsGithub">
+        <div class="col-sm-12 col-md-6 col-lg-4 mb-2 px-1" v-for="(plugin,index) in filteredPluginsGithub">
           <div class="card p-2" style="height:100%;" id="widgetGit_{{index}}">
             <div class="d-flex justify-content-between align-items-start">
               <!-- Левый блок с контентом -->
@@ -181,7 +181,7 @@
         },
         async fetchPlugins() {
           this.loading = true
-          const response = await axios.get(`/api/Modules/plugins`)
+          const response = await axios.get(`/api/plugins`)
             
               this.plugins = response.data.result
               this.osyshome = response.data.osysHome
@@ -242,28 +242,19 @@
             ;
         },
         async startCycle(plugin){
-          payload = {
-            "name" : plugin.name
-          }
-          const response = await axios.post('/api/Modules/cycle/start',payload)
+          const response = await axios.get('/api/plugins/'+plugin.name+'/start')
           console.log(response)
           if (response.data.status == 'ok')
             plugin.alive = true
         },
         async stopCycle(plugin){
-          payload = {
-            "name" : plugin.name
-          }
-          const response = await axios.post('/api/Modules/cycle/stop',payload)
+          const response = await axios.get('/api/plugins/'+plugin.name+'/stop')
           console.log(response)
           if (response.data.status == 'ok')
             plugin.alive = false
         },
         async reloadCycle(plugin){
-          payload = {
-            "name" : plugin.name
-          }
-          const response = await axios.post('/api/Modules/cycle/restart',payload)
+          const response = await axios.get('/api/plugins/'+plugin.name+'/restart')
           console.log(response)
           if (response.data.status == 'ok')
             plugin.alive = true

@@ -14,7 +14,6 @@ from app.database import db
 from app.core.lib.common import addNotify, CategoryNotify
 from app.core.lib.object import setProperty
 from plugins.Modules.forms.ModuleForm import routeSettings
-from app.api import api
 
 class Modules(BasePlugin):
 
@@ -24,10 +23,6 @@ class Modules(BasePlugin):
         self.description = """List modules"""
         self.category = "System"
         self.actions = ["search"]
-
-        from plugins.Modules.api import create_api_ns
-        api_ns = create_api_ns()
-        api.add_namespace(api_ns, path="/Modules")
     
     def initialization(self):
         pass
