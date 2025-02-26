@@ -12,10 +12,10 @@ class ModuleForm(FlaskForm):
     title = StringField('Name')
     category = StringField('Category')
     hidden = BooleanField('Hidden in statusbar')
-    hide_widget = BooleanField('Hide widget in control panel (if available)')
+    hide_widget = BooleanField('Hide widget in control panel')
     active = BooleanField('Active')
     url = StringField('Url repository Github')
-    level_logging = SelectField("Level logging (apply after restart)",
+    level_logging = SelectField("Level logging",
                                 choices=(
                                     (None,"Default"),
                                     ("DEBUG","Debug"),
