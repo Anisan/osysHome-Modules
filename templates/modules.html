@@ -13,8 +13,8 @@
 {% block module %}
 
 <!-- [ Main Content ] start -->
-<script src="https://cdn.jsdelivr.net/npm/vue@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script src="{{ config.ASSETS_ROOT }}/plugins/vue/vue@2.js"></script>
+<script src="{{ config.ASSETS_ROOT }}/plugins/vue/axios.min.js"></script>
 <div id="list_modules">
   <div class="d-flex justify-content-between mb-2">
     <button  class="btn btn-primary btn-sm d-flex align-items-center me-3" type="button" @click="fetchData()">
