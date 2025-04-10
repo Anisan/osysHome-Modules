@@ -2,6 +2,7 @@ import requests
 import re
 import zipfile
 import os
+import sys
 import datetime
 import shutil
 import subprocess
@@ -23,7 +24,8 @@ class Modules(BasePlugin):
         self.description = """List modules"""
         self.category = "System"
         self.actions = ["search"]
-    
+        self.author = "Eraser"
+
     def initialization(self):
         pass
 
@@ -34,7 +36,7 @@ class Modules(BasePlugin):
         if op == 'settings':
 
             return routeSettings(request)
-        
+
         if op == 'upgrade':
             name = request.args.get('name',None)
             url = request.args.get('url',None)
@@ -70,12 +72,12 @@ class Modules(BasePlugin):
                 addNotify("Error update", 'Error update osysHome',CategoryNotify.Error,self.name)
 
             return redirect(self.name)
-    
+
         if op == 'install':
             name = request.args.get('name',None)
             owner = request.args.get('author',None)
             repo = 'osysHome-' + name
-            
+
             try:
                 info = self.get_github_repo_info(owner, repo)
                 self.download_and_extract_github_repo(owner, repo, info['default_branch'], os.path.join(Config.PLUGINS_FOLDER,name))
@@ -92,55 +94,55 @@ class Modules(BasePlugin):
                 addNotify("Error install",f'Error install module {name}',CategoryNotify.Error,self.name)
 
             return redirect(self.name)
-  
+
         return render_template("modules.html")
-        
+
     def extract_owner_and_repo(self, url):
         pattern = r"https://github\.com/([^/]+)/([^/]+)"
         match = re.match(pattern, url)
-        
+
         if match:
             owner, repo = match.groups()
             return owner, repo
         else:
             return None, None
-        
+
     def get_github_repo_info(self, owner, repo):
         url = f"https://api.github.com/repos/{owner}/{repo}"
         response = requests.get(url)
-        
+
         if response.status_code == 200:
             return response.json()
         else:
             return None
-        
+
     def download_and_extract_github_repo(self, owner, repo, branch, target_folder='.'):
         url = f"https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip"
         local_filename = f"{repo}.zip"
-        
+
         # Скачивание архива
         self.logger.info("Downloading %s...",url)
         response = requests.get(url)
-        
+
         if response.status_code == 200:
             with open(local_filename, 'wb') as f:
                 f.write(response.content)
             self.logger.info(f"Downloaded {local_filename}")
         else:
             raise Exception(f"Failed to download the file: {response.status_code}")
-            
+
         # Создание целевой папки
         os.makedirs(target_folder, exist_ok=True)
-        
+
         # Распаковка архива во временную папку
         temp_extract_folder = os.path.join(target_folder, "temp")
         os.makedirs(temp_extract_folder, exist_ok=True)
-        
+
         self.logger.info(f"Extracting {local_filename} to {temp_extract_folder}...")
         with zipfile.ZipFile(local_filename, 'r') as zip_ref:
             zip_ref.extractall(temp_extract_folder)
         self.logger.info(f"Extracted to {temp_extract_folder}")
-        
+
         # Перемещение файлов из внутренней папки архива в целевую папку
         inner_folder = os.path.join(temp_extract_folder, f"{repo}-{branch}")
         for item in os.listdir(inner_folder):
@@ -150,10 +152,10 @@ class Modules(BasePlugin):
                 shutil.copytree(s, d, dirs_exist_ok=True)
             else:
                 shutil.copy2(s, d)
-        
+
         # Удаление временной папки и загруженного архива
         shutil.rmtree(temp_extract_folder)
-        
+
         # Удаление загруженного архива
         os.remove(local_filename)
         self.logger.info(f"Removed {local_filename}")
@@ -165,7 +167,15 @@ class Modules(BasePlugin):
         if os.path.isfile(requirements_file):
             self.logger.info(f"File {requirements_file} found. Install packets...")
             # Устанавливаем пакеты из requirements.txt с помощью pip
-            result = subprocess.run(['venv/bin/pip', 'install', '-r', requirements_file], capture_output=True, text=True)
+            # Определение пути к pip в зависимости от операционной системы
+            if sys.platform == "win32":
+                pip_path = os.path.join('venv', 'Scripts', 'pip')
+            else:
+                pip_path = os.path.join('venv', 'bin', 'pip')
+
+            # Выполнение команды установки зависимостей
+            result = subprocess.run([pip_path, 'install', '-r', requirements_file], capture_output=True, text=True)
+
             if result.returncode == 0:
                 self.logger.info("Packets installed.")
             else:
