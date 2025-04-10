@@ -78,7 +78,7 @@
                   </div>
                   <!-- Блок с кнопками Upgrade и Settings справа -->
                   <div class="d-flex flex-column align-items-end">
-                    <a v-if="plugin.new" :href="'?op=upgrade&name='+plugin.name" class="btn btn-success btn-sm mb-2"><i class="fa-solid fa-upload"></i> Upgrade</a>
+                    <a v-if="plugin.new" :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url" class="btn btn-success btn-sm mb-2"><i class="fa-solid fa-upload"></i> Upgrade</a>
                     <a :href="'?op=settings&name='+plugin.name" class="btn btn-secondary btn-sm"><i class="fa-solid fa-gears"></i> Settings</a>
                   </div>
                 </div>

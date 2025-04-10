@@ -37,8 +37,10 @@ class Modules(BasePlugin):
         
         if op == 'upgrade':
             name = request.args.get('name',None)
+            url = request.args.get('url',None)
             module = Plugin.query.filter(Plugin.name == name).one_or_404()
-            url = module.url
+            if module and module.url:
+                url = module.url
 
             owner, repo = self.extract_owner_and_repo(url)
             try:
@@ -84,6 +86,7 @@ class Modules(BasePlugin):
                 module.save()
                 db.session.commit()
                 addNotify("Success install",f'Success install module {name}',CategoryNotify.Info,self.name)
+                setProperty("SystemVar.NeedRestart", True, self.name)
             except Exception as ex:
                 self.logger.exception(ex)
                 addNotify("Error install",f'Error install module {name}',CategoryNotify.Error,self.name)
