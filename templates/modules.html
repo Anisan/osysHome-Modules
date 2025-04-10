@@ -212,9 +212,11 @@
                     })
                     if (find.length > 0){
                         var plugin = find[0]
-                        if (Date.parse(plugin.updated) < Date.parse(element.updated_at))
+                        if (Date.parse(plugin.updated) < Date.parse(element.updated_at)){
                             plugin.new = true
+                        }
                         Vue.set(plugin, 'stars', element.stargazers_count);
+                        Vue.set(plugin, 'html_url', element.html_url);
                         if (plugin.author == "Undefined")
                             Vue.set(plugin, 'author', element.owner.login);
                     }
