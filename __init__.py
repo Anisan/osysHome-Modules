@@ -14,7 +14,6 @@ from app.core.models.Plugins import Plugin
 from app.database import db
 from app.core.lib.common import addNotify, CategoryNotify
 from app.core.lib.object import setProperty
-from plugins.Modules.forms.ModuleForm import routeSettings
 
 class Modules(BasePlugin):
 
@@ -32,10 +31,6 @@ class Modules(BasePlugin):
     def admin(self, request):
 
         op = request.args.get("op",None)
-
-        if op == 'settings':
-
-            return routeSettings(request)
 
         if op == 'upgrade':
             name = request.args.get('name',None)
