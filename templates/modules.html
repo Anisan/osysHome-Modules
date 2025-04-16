@@ -147,7 +147,8 @@
                       </div>
                     </div>
                     <div class="d-flex flex-column align-items-end">
-                      <a v-if="plugin.new" class="btn btn-success" :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url" @click.stop><i class="fa-solid fa-upload"></i> Upgrade</a>
+                      <a v-if="plugin.new" class="btn btn-success mb-2" :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url" @click.stop><i class="fa-solid fa-upload"></i> Upgrade</a>
+                      <a v-if="'active' in plugin && !systemModules.includes(plugin.name)" class="btn btn-danger" :href="'?op=uninstall&name='+plugin.name" @click.stop onClick="return confirm('Uninstall module?')"><i class="fa-solid fa-trash"></i> Uninstall</a>
                       <a v-if="!plugin.installed && plugin.name !='osysHome' && plugin.active === undefined" class="btn btn-success" :href="'?op=install&name='+plugin.shortName+'&author='+plugin.author" @click.stop><i class="fa-solid fa-upload"></i> Install</a>
                     </div>
                   </div>
@@ -239,6 +240,7 @@
       el: '#list_modules',
       delimiters: ['[[', ']]'], // Измененные разделители
       data: {
+        systemModules:['Modules','Objects','Users','Scheduler','wsServer'],
         search: '',
         sortKey: 'runtime',
         sortAsc: true,

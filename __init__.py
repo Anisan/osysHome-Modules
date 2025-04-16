@@ -8,10 +8,11 @@ import shutil
 import subprocess
 from settings import Config
 from flask import render_template, redirect
+from sqlalchemy import text
 from app.core.main.BasePlugin import BasePlugin
 from app.core.main.PluginsHelper import plugins
 from app.core.models.Plugins import Plugin
-from app.database import db
+from app.database import db, session_scope
 from app.core.lib.common import addNotify, CategoryNotify
 from app.core.lib.object import setProperty
 
@@ -87,6 +88,46 @@ class Modules(BasePlugin):
             except Exception as ex:
                 self.logger.exception(ex)
                 addNotify("Error install",f'Error install module {name}',CategoryNotify.Error,self.name)
+
+            return redirect(self.name)
+
+        if op == 'uninstall':
+            name = request.args.get('name',None)
+            self.logger.info(f"Unstalling module '{name}'")
+
+            if name in ['Modules','Objects','Users','Scheduler','wsServer']:
+                addNotify("Error uninstall",f'Cannot uninstall module {name}',CategoryNotify.Error,self.name)
+                return redirect(self.name)
+
+            with session_scope() as session:
+                try:
+                    for _, model in db.Model.registry._class_registry.items():
+                        if hasattr(model, '__tablename__') and hasattr(model, '__table__'):
+                            table_name = model.__tablename__
+                            module_name = model.__module__.split(".")[1]
+                            if module_name == name:
+                                self.logger.info(f"Drop table {table_name}")
+                                query = text(f"DROP TABLE {table_name};")
+                                session.execute(query)
+
+                    folder_module = os.path.join(Config.PLUGINS_FOLDER,name)
+
+                    if os.path.exists(folder_module):
+                        shutil.rmtree(folder_module)
+                        self.logger.info(f"Deleted folder '{folder_module}'.")
+
+                    module = session.query(Plugin).filter(Plugin.name == name).one_or_none()
+                    if module:
+                        session.delete(module)
+                    db.session.commit()
+                    addNotify("Success uninstall",f'Success uninstall module {name}',CategoryNotify.Info,self.name)
+                    setProperty("SystemVar.NeedRestart", True, self.name)
+                    self.logger.info(f"Unstalled module '{name}'")
+
+                except Exception as ex:
+                    session.rollback()
+                    self.logger.exception(ex)
+                    addNotify("Error install",f'Error uninstall module {name}',CategoryNotify.Error,self.name)
 
             return redirect(self.name)
 
