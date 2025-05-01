@@ -44,7 +44,7 @@ class Modules(BasePlugin):
             try:
                 info = self.get_github_repo_info(owner, repo)
                 self.download_and_extract_github_repo(owner, repo, info['default_branch'], os.path.join(Config.PLUGINS_FOLDER,name))
-                module.updated = datetime.datetime.now()
+                module.updated = datetime.datetime.now(datetime.timezone.utc)
                 db.session.commit()
                 addNotify("Success update",f'Success update module {name}',CategoryNotify.Info,self.name)
                 setProperty("SystemVar.NeedRestart", True, self.name)
@@ -60,7 +60,7 @@ class Modules(BasePlugin):
             branch = 'master'
             try:
                 self.download_and_extract_github_repo(owner, repo, branch, os.path.join(Config.APP_DIR))
-                setProperty("SystemVar.upgraded",datetime.datetime.now(),self.name)
+                setProperty("SystemVar.upgraded",datetime.datetime.now(datetime.timezone.utc),self.name)
                 addNotify("Success update", 'Success update osysHome',CategoryNotify.Info,self.name)
                 setProperty("SystemVar.NeedRestart", True, self.name)
             except Exception as ex:
@@ -79,7 +79,7 @@ class Modules(BasePlugin):
                 self.download_and_extract_github_repo(owner, repo, info['default_branch'], os.path.join(Config.PLUGINS_FOLDER,name))
                 module = Plugin()
                 module.name = name
-                module.updated = datetime.datetime.now()
+                module.updated = datetime.datetime.now(datetime.timezone.utc)
                 module.url = f'https://github.com/{owner}/{repo}'
                 module.save()
                 db.session.commit()
@@ -202,15 +202,9 @@ class Modules(BasePlugin):
         # Проверяем наличие файла requirements.txt
         if os.path.isfile(requirements_file):
             self.logger.info(f"File {requirements_file} found. Install packets...")
-            # Устанавливаем пакеты из requirements.txt с помощью pip
-            # Определение пути к pip в зависимости от операционной системы
-            if sys.platform == "win32":
-                pip_path = os.path.join('venv', 'Scripts', 'pip')
-            else:
-                pip_path = os.path.join('venv', 'bin', 'pip')
 
             # Выполнение команды установки зависимостей
-            result = subprocess.run([pip_path, 'install', '-r', requirements_file], capture_output=True, text=True)
+            result = subprocess.run([sys.executable, "-m", "pip", 'install', '-r', requirements_file], capture_output=True, text=True)
 
             if result.returncode == 0:
                 self.logger.info("Packets installed.")
