@@ -12,7 +12,7 @@ from sqlalchemy import text
 from app.core.main.BasePlugin import BasePlugin
 from app.core.main.PluginsHelper import plugins
 from app.core.models.Plugins import Plugin
-from app.database import db, session_scope
+from app.database import db, session_scope, get_now_to_utc
 from app.core.lib.common import addNotify, CategoryNotify
 from app.core.lib.object import setProperty
 
@@ -44,7 +44,7 @@ class Modules(BasePlugin):
             try:
                 info = self.get_github_repo_info(owner, repo)
                 self.download_and_extract_github_repo(owner, repo, info['default_branch'], os.path.join(Config.PLUGINS_FOLDER,name))
-                module.updated = datetime.datetime.now(datetime.timezone.utc)
+                module.updated = get_now_to_utc()
                 db.session.commit()
                 addNotify("Success update",f'Success update module {name}',CategoryNotify.Info,self.name)
                 setProperty("SystemVar.NeedRestart", True, self.name)
@@ -60,7 +60,7 @@ class Modules(BasePlugin):
             branch = 'master'
             try:
                 self.download_and_extract_github_repo(owner, repo, branch, os.path.join(Config.APP_DIR))
-                setProperty("SystemVar.upgraded",datetime.datetime.now(datetime.timezone.utc),self.name)
+                setProperty("SystemVar.upgraded",get_now_to_utc(),self.name)
                 addNotify("Success update", 'Success update osysHome',CategoryNotify.Info,self.name)
                 setProperty("SystemVar.NeedRestart", True, self.name)
             except Exception as ex:
@@ -79,7 +79,7 @@ class Modules(BasePlugin):
                 self.download_and_extract_github_repo(owner, repo, info['default_branch'], os.path.join(Config.PLUGINS_FOLDER,name))
                 module = Plugin()
                 module.name = name
-                module.updated = datetime.datetime.now(datetime.timezone.utc)
+                module.updated = get_now_to_utc()
                 module.url = f'https://github.com/{owner}/{repo}'
                 module.save()
                 db.session.commit()
