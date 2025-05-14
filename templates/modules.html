@@ -49,7 +49,7 @@
                   <div>Author: <b>[[osyshome.author]]</b></div>
                 </div>
                 <span v-if="loading" class="fas fa-rotate fa-spin me-2"></span>
-                <a v-if="osyshome.new" href="?op=upgrade_core" class="btn btn-success" @click.stop><i class="fa-solid fa-upload"></i> Upgrade</a>
+                <a v-if="!loading && osyshome.update" href="?op=upgrade_core" class="btn btn-success" @click.stop><i class="fa-solid fa-upload"></i> Upgrade</a>
               </div>
             </div>
           </div>
@@ -80,7 +80,7 @@
                   <!-- Блок с кнопками Upgrade и Settings справа -->
                   <div class="d-flex flex-column align-items-end">
                     <span v-if="loading" class="fas fa-rotate fa-spin me-2 mb-2"></span>
-                    <a v-if="plugin.new" :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url" class="btn btn-success btn-sm mb-2" @click.stop><i class="fa-solid fa-upload"></i> Upgrade</a>
+                    <a v-if="!loading && plugin.update" :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url" class="btn btn-success btn-sm mb-2" @click.stop><i class="fa-solid fa-upload"></i> Upgrade</a>
                   </div>
                 </div>
                 <!-- Нижний блок с кнопками -->
@@ -147,7 +147,8 @@
                       </div>
                     </div>
                     <div class="d-flex flex-column align-items-end">
-                      <a v-if="plugin.new" class="btn btn-success mb-2" :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url" @click.stop><i class="fa-solid fa-upload"></i> Upgrade</a>
+                      <a v-if="plugin.update && plugin.name !='osysHome'" class="btn btn-success mb-2" :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url" @click.stop><i class="fa-solid fa-upload"></i> Upgrade</a>
+                      <a v-if="plugin.update && plugin.name =='osysHome'" class="btn btn-success mb-2" href="'?op=upgrade_core" @click.stop><i class="fa-solid fa-upload"></i> Upgrade</a>
                       <a v-if="'active' in plugin && !systemModules.includes(plugin.name)" class="btn btn-danger" :href="'?op=uninstall&name='+plugin.name" @click.stop onClick="return confirm('Uninstall module?')"><i class="fa-solid fa-trash"></i> Uninstall</a>
                       <a v-if="!plugin.installed && plugin.name !='osysHome' && plugin.active === undefined" class="btn btn-success" :href="'?op=install&name='+plugin.shortName+'&author='+plugin.author" @click.stop><i class="fa-solid fa-upload"></i> Install</a>
                     </div>
@@ -155,13 +156,13 @@
                 </div>
                 <div class="modal-body">
                   <ul class="nav nav-tabs mb-3" id="configTabs" role="tablist">
-                    <li class="nav-item"><a class="nav-link tab-button active" id="history-tab" href="#history" data-bs-toggle="tab" role="tab">History</a></li>
+                    <li v-if="plugin" class="nav-item"><a class="nav-link tab-button active" id="history-tab" href="#history" data-bs-toggle="tab" role="tab">History ([[plugin.branch]])</a></li>
                     <li v-if="settings" class="nav-item"><a class="nav-link tab-button" href="#settings" data-bs-toggle="tab" role="tab">Settings</a></li>
                   </ul>
                   <div class="tab-content" id="myTabContent">
                     <div class="tab-pane fade show active" id="history" role="tabpanel" aria-labelledby="general-tab">
                       <div class="list-group">
-                        <a v-for="item in commits" :href="item.html_url" target="_blank" class="list-group-item list-group-item-action d-flex p-1" aria-current="true">
+                        <div v-for="item in commits" :href="item.html_url" target="_blank" class="list-group-item list-group-item-action d-flex p-1" aria-current="true">
                           <img v-if="item.author" :src="item.author.avatar_url" alt="" width="32" height="32" class="rounded-circle flex-shrink-0 me-2">
                           <img v-else src="/Modules/static/Modules.png" alt="" width="32" height="32" class="rounded-circle flex-shrink-0 me-2">
                           <div class="d-flex gap-2 w-100 justify-content-between">
@@ -171,13 +172,29 @@
                             </div>
                             <div>
                               <span v-if="item.installed" class="badge bg-success">Installed</span>
+                              <span v-else>
+                                <a v-if="plugin.name == 'osysHome'" class="badge bg-secondary mb-2" :href="'?op=upgrade_core&commit='+item.sha" @click.stop><i class="fa-solid fa-upload"></i> Install</a>
+                                <a v-else class="badge bg-secondary mb-2" :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url+'&commit='+item.sha" @click.stop><i class="fa-solid fa-upload"></i> Install</a>
+                              </span>
                               <small class="opacity-50 text-nowrap">[[item.commit.author.date]]</small>
                             </div>
                           </div>
-                        </a>
+                        </div>
                       </div>
                     </div>
-                    <div v-if="settings" class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="general-tab">
+                    <div v-if="name_info == 'osyshome'" class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="general-tab">
+                      <div>
+                        <label class="form-label">
+                          Branch repository for update
+                        </label>
+                        <select class="form-select" aria-label="Select branch" v-model="settings.branch" >
+                          <option v-for="item in branches" :value="item.name">[[item.name]]</option>
+                        </select>
+                      </div>
+                      <button type="button" class="btn btn-success mt-3" @click.stop="saveSettingsCore">Save</button>
+                      [[resultSave]]
+                    </div>
+                    <div v-if="name_info != 'osyshome'" class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="general-tab">
                       <div class="form-check">
                         <input class="form-check-input" type="checkbox" v-model="settings.active" id="flexCheckDefault">
                         <label class="form-check-label" for="flexCheckDefault">
@@ -215,6 +232,14 @@
                         <input type="text" class="form-control" v-model="settings.url">
                       </div>
                       <div>
+                        <label class="form-label">
+                          Branch repository for update
+                        </label>
+                        <select class="form-select" aria-label="Select branch" v-model="settings.branch" >
+                          <option v-for="item in branches" :value="item.name">[[item.name]]</option>
+                        </select>
+                      </div>
+                      <div>
                         <label class="form-check-label" for="flexCheckDefault">
                           Logging level
                         </label>
@@ -250,8 +275,10 @@
         loading: false,
         error: null,
         osyshome:null,
+        name_info:null,
         commits:null,
         settings:null,
+        branches:null,
         levels:[ 
           {"value": "None", "title":"Default"},
           {"value": "DEBUG", "title":"Debug"},
@@ -318,11 +345,9 @@
         async fetchPlugins() {
           this.loading = true
           const response = await axios.get(`/api/plugins`)
-            
               this.plugins = response.data.result
               this.osyshome = response.data.osysHome
               this.loading = false
-           
         },
         fetchGithub() {
           this.loading = true
@@ -357,6 +382,7 @@
                         Vue.set(plugin, 'stars', element.stargazers_count);
                         Vue.set(plugin, 'owner', element.owner.login);
                         Vue.set(plugin, 'repo', element.name);
+                        Vue.set(plugin, 'branch', element.default_branch);
                         Vue.set(plugin, 'image', '/'+plugin.name+'/static/'+plugin.name+'.png');
                         Vue.set(plugin, 'html_url', element.html_url);
                         if (plugin.author == "Undefined")
@@ -407,6 +433,7 @@
             plugin.alive = true
         },
         openInfo(name){
+          this.name_info = name
           if (name != 'osyshome'){
             this.plugin = this.plugins.find(p => p.name === name);
             if (this.plugin == null)
@@ -418,14 +445,29 @@
           this.settings = null
           $('#history-tab').tab('show');
           $('#infoModal').modal('show')
-          this.fetchCommits(this.plugin.owner, this.plugin.repo)
+          this.fetchBranches(this.plugin.owner, this.plugin.repo)
+          this.fetchCommits(this.plugin.owner, this.plugin.repo, this.plugin.branch)
           if (name != 'osyshome')
             this.fetchSettings(this.plugin.name)
+          else{
+            this.settings = {"branch":this.plugin.branch}
+          }
+
         },
-        async fetchCommits(owner, name) {
+        async fetchBranches(owner,name){
+          const response = await axios.get("https://api.github.com/repos/"+owner+"/"+name+"/branches")
+          this.branches = response.data
+        },
+        async fetchCommits(owner, name, branch) {
           this.commits = null
-          const response = await axios.get("https://api.github.com/repos/"+owner+"/"+name+"/commits?&per_page=15")
+          var url = "https://api.github.com/repos/"+owner+"/"+name+"/commits?"
+          if (branch)
+            url +="sha="+branch+"&"
+          url += "per_page=15"
+          const response = await axios.get(url)
           var commits = response.data
+          if (!Array.isArray(commits)) 
+            commits =  [commits]
           var fl= false
           if (this.plugin.updated){
             for (var element of commits) {
@@ -447,6 +489,14 @@
         async saveSettings(){
           const response = await axios.post("/api/plugins/"+this.plugin.name+"/settings", this.settings)
           this.resultSave = "Result: " + response.data.message
+          setTimeout(() => {
+            this.resultSave = null; // Обнуляем значение
+          }, 5000);
+        },
+        async saveSettingsCore(){
+          const response = await axios.post("/api/property/SystemVar.core_branch", this.settings.branch, {headers: { 'Content-Type' : 'text/plain' }})
+          this.resultSave = "Result: " + response.data.success
+          this.osyshome.branch = this.settings.branch
           setTimeout(() => {
             this.resultSave = null; // Обнуляем значение
           }, 5000);
