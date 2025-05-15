@@ -26,6 +26,10 @@
       <input v-model="search" type="text" class="form-control" placeholder="Filter...">
       <button class="btn btn-outline-secondary" type="button" @click="search=null"><i class="fa-solid fa-broom"></i></button>
     </div>
+    <button type="button" class="btn btn-secondary text-nowrap ms-2" data-bs-toggle="modal" data-bs-target="#exampleModal">
+      <span class="fas fa-gear me-2"></span>
+      Settings
+  </button>
   </div>
 
     <ul class="nav nav-tabs mb-3" id="configTabs" role="tablist">
@@ -265,6 +269,7 @@
       el: '#list_modules',
       delimiters: ['[[', ']]'], // Измененные разделители
       data: {
+        token:"{{token}}",
         systemModules:['Modules','Objects','Users','Scheduler','wsServer'],
         search: '',
         sortKey: 'runtime',
@@ -349,9 +354,19 @@
               this.osyshome = response.data.osysHome
               this.loading = false
         },
+        headersGithub(){
+          var headers = {}
+          if (this.token) {
+            headers = {
+              Authorization: `token ${this.token}`,
+              Accept: 'application/vnd.github.v3+json',
+            };
+          }
+          return headers
+        },
         fetchGithub() {
           this.loading = true
-          axios.get(`https://api.github.com/search/repositories?q=osysHome&per_page=100`)
+          axios.get(`https://api.github.com/search/repositories?q=osysHome&per_page=100`,{headers: this.headersGithub()})
             .then(response => {
                 var res=[]
                 
@@ -443,6 +458,7 @@
             this.plugin = this.osyshome
           this.commits = null
           this.settings = null
+          this.branches = null
           $('#history-tab').tab('show');
           $('#infoModal').modal('show')
           this.fetchBranches(this.plugin.owner, this.plugin.repo)
@@ -455,7 +471,7 @@
 
         },
         async fetchBranches(owner,name){
-          const response = await axios.get("https://api.github.com/repos/"+owner+"/"+name+"/branches")
+          const response = await axios.get("https://api.github.com/repos/"+owner+"/"+name+"/branches", {headers: this.headersGithub()})
           this.branches = response.data
         },
         async fetchCommits(owner, name, branch) {
@@ -464,7 +480,7 @@
           if (branch)
             url +="sha="+branch+"&"
           url += "per_page=15"
-          const response = await axios.get(url)
+          const response = await axios.get(url, {headers: this.headersGithub()})
           var commits = response.data
           if (!Array.isArray(commits)) 
             commits =  [commits]
@@ -509,6 +525,35 @@
         cursor: pointer;
     }
 </style>
+
+<!-- Модальное окно с настройками -->
+<div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+      <div class="modal-content">
+          <form  method="POST">
+          <div class="modal-header">
+              <h5 class="modal-title" id="exampleModalLabel">Settings</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+              <!-- Поля формы -->
+              {{ form.hidden_tag() }}
+              <div class="mb-3">
+                  {{ form.update_time.label(class="form-label") }}
+                  {{ form.update_time(class="form-control") }}
+              </div>
+              <div class="mb-3">
+                  {{ form.token.label(class="form-label") }}
+                  {{ form.token(class="form-control") }}
+              </div>
+          </div>
+          <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+              <button type="submit" class="btn btn-primary">Submit</button>
+          </div>
+          </form>
+      </div>
+  </div>
 {% endblock %}
 
 <!-- Specific Page JS goes HERE  -->

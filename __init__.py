@@ -16,6 +16,7 @@ from app.core.models.Plugins import Plugin
 from app.database import db, session_scope, get_now_to_utc
 from app.core.lib.common import addNotify, CategoryNotify
 from app.core.lib.object import setProperty, getProperty
+from plugins.Modules.forms.SettingForms import SettingsForm
 
 class Modules(BasePlugin):
 
@@ -146,7 +147,22 @@ class Modules(BasePlugin):
 
             return redirect(self.name)
 
-        return render_template("modules.html")
+        settings = SettingsForm()
+        if request.method == 'GET':
+            settings.update_time.data = self.config.get('update_time',60)
+            settings.token.data = self.config.get('token','')
+        else:
+            if settings.validate_on_submit():
+                self.config["update_time"] = settings.update_time.data
+                self.config["token"] = settings.token.data
+                self.saveConfig()
+                return redirect("Modules")
+
+        content = {
+            "form": settings,
+            "token": self.config.get('token',''),
+        }
+        return self.render("modules.html", content)
 
     def extract_owner_and_repo(self, url):
         pattern = r"https://github\.com/([^/]+)/([^/]+)"
@@ -158,21 +174,25 @@ class Modules(BasePlugin):
         else:
             return None, None
 
-    def get_github_repo_info(self, owner, repo):
-        url = f"https://api.github.com/repos/{owner}/{repo}"
-        response = requests.get(url)
+    def github_request(self, url):
+        github_headers = {
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'Python-Commit-Checker',
+        }
+        token = self.config.get('token',None)
+        if token:
+            github_headers['Authorization'] = f'token {token}'
+        response = requests.get(url, headers=github_headers)
         if response.status_code == 200:
             return response.json()
         else:
             return None
 
+    def get_github_repo_info(self, owner, repo):
+        return self.github_request(f"https://api.github.com/repos/{owner}/{repo}")
+
     def get_github_commit_info(self, owner, repo, commit):
-        url = f"https://api.github.com/repos/{owner}/{repo}/commits/{commit}"
-        response = requests.get(url)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            return None
+        return self.github_request(f"https://api.github.com/repos/{owner}/{repo}/commits/{commit}")
 
     def download_and_extract_github_repo(self, owner, repo, branch, commit=None, target_folder='.'):
         dt = get_now_to_utc()
@@ -392,7 +412,8 @@ class Modules(BasePlugin):
                     repo_owner="Anisan",
                     repo_name="osysHome",
                     last_known_date=last_known,
-                    branch=branch
+                    branch=branch,
+                    github_token=self.config.get('token',None),
                 )
                 if has_new:
                     setProperty("SystemVar.update", True, self.name)
@@ -402,11 +423,8 @@ class Modules(BasePlugin):
                 self.logger.info(f'Found update for osysHome (branch: {branch})')
         repos = {}
         try:
-            response = requests.get(
-                "https://api.github.com/search/repositories?q=osysHome&per_page=100",
-                headers={"Accept": "application/vnd.github.v3+json"}
-            )
-            data = response.json()['items']
+            data = self.github_request("https://api.github.com/search/repositories?q=osysHome&per_page=100")
+            data = data['items']
             for item in data:
                 name = item['name'].split('-')
                 if len(name) > 1:
@@ -436,12 +454,14 @@ class Modules(BasePlugin):
                         repo_owner=owner,
                         repo_name=repo,
                         last_known_date=last_known,
-                        branch=plugin.branch
+                        branch=plugin.branch,
+                        github_token=self.config.get('token',None),
                     )
                 if has_new:
                     plugin.update = True
                     session.commit()
                     # todo addEvent
                     self.logger.info(f'Found update for "{plugin.name}" (branch: {plugin.branch})')
+                    addNotify("Available update",f'Available update module {plugin.name} (branch: {plugin.branch})', CategoryNotify.Info, self.name)
 
-        self.event.wait(60.0 * 60.0)  # TODO interval from settings
+        self.event.wait(60.0 * self.config.get('update_time',60))
