@@ -1,11 +1,11 @@
-<h3><a href="admin/Modules"><img class="me-2" height="30px" src="/Modules/static/Modules.png">Modules</a></h3>
+<h3><a href="admin/Modules"><img class="me-2" height="30px" src="/Modules/static/Modules.png">{{ _('Modules')}}</a></h3>
 {%if update%}
-<h5>Updates:</h5>
+<h5>{{ _('Updates')}}:</h5>
 <div>
     {%for item in update %}
     <div class="badge rounded-pill bg-success py-1"><img class="me-2" width="20px" height="20px" src="{{item.img}}" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'">{{item.title}}</div>
     {%endfor%}
 </div>
 {%else%}
-<h5>Updates not found</h5>
+<h5>{{ _('Updates not found')}}</h5>
 {%endif%}
