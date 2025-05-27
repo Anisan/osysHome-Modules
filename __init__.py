@@ -13,7 +13,7 @@ from sqlalchemy import text
 from app.core.main.BasePlugin import BasePlugin
 from app.core.main.PluginsHelper import plugins
 from app.core.models.Plugins import Plugin
-from app.database import db, session_scope, get_now_to_utc
+from app.database import db, session_scope, get_now_to_utc, convert_utc_to_local
 from app.core.lib.common import addNotify, CategoryNotify
 from app.core.lib.object import setProperty, getProperty
 from plugins.Modules.forms.SettingForms import SettingsForm
@@ -72,6 +72,7 @@ class Modules(BasePlugin):
                 branch = 'master'
             try:
                 dt = self.download_and_extract_github_repo(owner, repo, branch, commit, os.path.join(Config.APP_DIR))
+                dt = convert_utc_to_local(dt)
                 setProperty("SystemVar.upgraded", dt, self.name)
                 setProperty("SystemVar.update", False, self.name)
                 addNotify("Success update", 'Success update osysHome',CategoryNotify.Info,self.name)
