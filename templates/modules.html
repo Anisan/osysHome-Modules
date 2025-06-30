@@ -68,7 +68,7 @@
                   <!-- Основной контент слева -->
                   <div class="flex-grow-1 me-3">
                     <div class="fw-bold">
-                      <img :src="plugin.image" height="25px" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'">
+                      <img :src="'/'+plugin.name+'/static/'+plugin.name+'.png'" height="25px" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'">
                       <a v-if="plugin.title" :href="'/admin/'+plugin.name">[[ plugin.title ]]</a>
                       <a v-else :href="'/admin/'+plugin.name">[[ plugin.name ]]</a>
                       <span v-for="action in plugin.actions" class="badge bg-success">[[action]]</span>
@@ -102,23 +102,25 @@
         </div>
       </div>
       <div class="tab-pane fade" id="uninstalled" role="tabpanel">
-        <div class="col-sm-12 col-md-6 col-lg-4 mb-2 px-1" v-for="(plugin,index) in filteredPluginsGithub">
-          <div class="card p-2 cursor-pointer" style="height:100%;" id="widgetGit_{{index}}" @click="openInfo(plugin.name, false)">
-            <div class="d-flex justify-content-between align-items-start">
-              <!-- Левый блок с контентом -->
-              <div>
-                <div class="fw-bold">
-                  <img :src="plugin.image" height="25px" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'">
-                  <a :href="plugin.url" target="_blank">[[ plugin.name ]]</a>
-                  <span v-for="topic in plugin.topic" class="badge bg-secondary">[[topic]]</span>
-                  <span v-if="plugin.stars"><i class="text-warning fa-solid fa-star ms-1"></i>[[plugin.stars]]</span>
+        <div class="row mx-1">
+          <div class="col-sm-12 col-md-6 col-lg-4 mb-2 px-1" v-for="(plugin,index) in filteredPluginsGithub">
+            <div class="card p-2 cursor-pointer" style="height:100%;" id="widgetGit_{{index}}" @click="openInfo(plugin.name, false)">
+              <div class="d-flex justify-content-between align-items-start">
+                <!-- Левый блок с контентом -->
+                <div>
+                  <div class="fw-bold">
+                    <img :src="plugin.image" height="25px" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'">
+                    <a :href="plugin.url" target="_blank">[[ plugin.name ]]</a>
+                    <span v-for="topic in plugin.topic" class="badge bg-secondary">[[topic]]</span>
+                    <span v-if="plugin.stars"><i class="text-warning fa-solid fa-star ms-1"></i>[[plugin.stars]]</span>
+                  </div>
+                  <div>[[ plugin.description ]]</div>
+                  <div>{{ _('Author')}}: <b>[[plugin.author]]</b></div>
                 </div>
-                <div>[[ plugin.description ]]</div>
-                <div>{{ _('Author')}}: <b>[[plugin.author]]</b></div>
-              </div>
-              <!-- Правый блок с кнопками -->
-              <div class="d-flex flex-column align-items-end">
-                <a :href="'?op=install&name='+plugin.shortName+'&author='+plugin.author" class="btn btn-success" @click.stop><i class="fa-solid fa-upload"></i> {{ _('Install')}}</a>
+                <!-- Правый блок с кнопками -->
+                <div class="d-flex flex-column align-items-end">
+                  <a :href="'?op=install&name='+plugin.shortName+'&author='+plugin.author" class="btn btn-success" @click.stop><i class="fa-solid fa-upload"></i> {{ _('Install')}}</a>
+                </div>
               </div>
             </div>
           </div>

@@ -1,6 +1,5 @@
 {
   "Active": "Активно",
-  "Author": "Автор",
   "Available": "Доступно",
   "Branch repository for update": "Ветка репозитория для обновления",
   "Category": "Категория",
@@ -12,14 +11,11 @@
   "Restart cycle": "Перезапустить цикл",
   "Start cycle": "Запустить цикл",
   "Stop cycle": "Остановить цикл",
-  "Title": "Название",
   "Token": "Токен Github",
   "Uninstall": "Удалить",
   "Update time": "Время обновления",
-  "Updated": "Обновлено",
   "Updates": "Обновления",
   "Updates not found": "Обновления не найдены",
   "Upgrade": "Обновить",
-  "Url repository for update": "URL репозитория для обновления",
-  "Version": "Версия"
+  "Url repository for update": "URL репозитория для обновления"
 }

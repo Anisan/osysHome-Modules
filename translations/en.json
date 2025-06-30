@@ -1,6 +1,5 @@
 {
   "Active": "Active",
-  "Author": "Author",
   "Available": "Available",
   "Branch repository for update": "Branch repository for update",
   "Category": "Category",
@@ -12,14 +11,11 @@
   "Restart cycle": "Restart cycle",
   "Start cycle": "Start cycle",
   "Stop cycle": "Stop cycle",
-  "Title": "Title",
   "Token": "Token Github",
   "Uninstall": "Uninstall",
   "Update time": "Update time",
-  "Updated": "Updated",
   "Updates": "Updates",
   "Updates not found": "Updates not found",
   "Upgrade": "Upgrade",
-  "Url repository for update": "Url repository for update",
-  "Version": "Version"
+  "Url repository for update": "Url repository for update"
 }
