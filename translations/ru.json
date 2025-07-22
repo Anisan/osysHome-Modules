@@ -1,12 +1,9 @@
 {
-  "Active": "Активно",
   "Available": "Доступно",
   "Branch repository for update": "Ветка репозитория для обновления",
   "Category": "Категория",
   "Hidden in statusbar": "Скрыто в панели управления",
   "Hide widget in control panel": "Скрыть виджет в панели управления",
-  "Install": "Установить",
-  "Installed": "Установлено",
   "Logging level": "Уровень логирования",
   "Restart cycle": "Перезапустить цикл",
   "Start cycle": "Запустить цикл",
@@ -14,7 +11,6 @@
   "Token": "Токен Github",
   "Uninstall": "Удалить",
   "Update time": "Время обновления",
-  "Updates": "Обновления",
   "Updates not found": "Обновления не найдены",
   "Upgrade": "Обновить",
   "Url repository for update": "URL репозитория для обновления"

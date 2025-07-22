@@ -1,12 +1,9 @@
 {
-  "Active": "Active",
   "Available": "Available",
   "Branch repository for update": "Branch repository for update",
   "Category": "Category",
   "Hidden in statusbar": "Hidden in statusbar",
   "Hide widget in control panel": "Hide widget in control panel",
-  "Install": "Install",
-  "Installed": "Installed",
   "Logging level": "Logging level",
   "Restart cycle": "Restart cycle",
   "Start cycle": "Start cycle",
@@ -14,7 +11,6 @@
   "Token": "Token Github",
   "Uninstall": "Uninstall",
   "Update time": "Update time",
-  "Updates": "Updates",
   "Updates not found": "Updates not found",
   "Upgrade": "Upgrade",
   "Url repository for update": "Url repository for update"
