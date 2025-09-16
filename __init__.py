@@ -7,7 +7,7 @@ import time
 import datetime
 import shutil
 import subprocess
-from settings import Config
+from app.configuration import Config
 from flask import render_template, redirect
 from sqlalchemy import text
 from app.core.main.BasePlugin import BasePlugin
