@@ -432,22 +432,103 @@
             ;
         },
         async startCycle(plugin){
-          const response = await axios.get('/api/plugins/'+plugin.name+'/start')
-          console.log(response)
-          if (response.data.status == 'ok')
-            plugin.alive = true
+          try {
+            const response = await axios.get('/api/plugins/'+plugin.name+'/start')
+            console.log(response)
+            if (response.data.status == 'ok') {
+              plugin.alive = true
+              if (typeof showNotification === 'function') {
+                showNotification({
+                  level: 'success',
+                  message: '{{ _("Cycle started successfully") }}',
+                  title: plugin.title || plugin.name
+                })
+              }
+            } else {
+              if (typeof showNotification === 'function') {
+                showNotification({
+                  level: 'error',
+                  message: response.data.message || '{{ _("Failed to start cycle") }}',
+                  title: plugin.title || plugin.name
+                })
+              }
+            }
+          } catch (error) {
+            console.error(error)
+            if (typeof showNotification === 'function') {
+              showNotification({
+                level: 'error',
+                message: error.response?.data?.message || error.message || '{{ _("Error starting cycle") }}',
+                title: plugin.title || plugin.name
+              })
+            }
+          }
         },
         async stopCycle(plugin){
-          const response = await axios.get('/api/plugins/'+plugin.name+'/stop')
-          console.log(response)
-          if (response.data.status == 'ok')
-            plugin.alive = false
+          try {
+            const response = await axios.get('/api/plugins/'+plugin.name+'/stop')
+            console.log(response)
+            if (response.data.status == 'ok') {
+              plugin.alive = false
+              if (typeof showNotification === 'function') {
+                showNotification({
+                  level: 'success',
+                  message: '{{ _("Cycle stopped successfully") }}',
+                  title: plugin.title || plugin.name
+                })
+              }
+            } else {
+              if (typeof showNotification === 'function') {
+                showNotification({
+                  level: 'error',
+                  message: response.data.message || '{{ _("Failed to stop cycle") }}',
+                  title: plugin.title || plugin.name
+                })
+              }
+            }
+          } catch (error) {
+            console.error(error)
+            if (typeof showNotification === 'function') {
+              showNotification({
+                level: 'error',
+                message: error.response?.data?.message || error.message || '{{ _("Error stopping cycle") }}',
+                title: plugin.title || plugin.name
+              })
+            }
+          }
         },
         async reloadCycle(plugin){
-          const response = await axios.get('/api/plugins/'+plugin.name+'/restart')
-          console.log(response)
-          if (response.data.status == 'ok')
-            plugin.alive = true
+          try {
+            const response = await axios.get('/api/plugins/'+plugin.name+'/restart')
+            console.log(response)
+            if (response.data.status == 'ok') {
+              plugin.alive = true
+              if (typeof showNotification === 'function') {
+                showNotification({
+                  level: 'success',
+                  message: '{{ _("Cycle restarted successfully") }}',
+                  title: plugin.title || plugin.name
+                })
+              }
+            } else {
+              if (typeof showNotification === 'function') {
+                showNotification({
+                  level: 'error',
+                  message: response.data.message || '{{ _("Failed to restart cycle") }}',
+                  title: plugin.title || plugin.name
+                })
+              }
+            }
+          } catch (error) {
+            console.error(error)
+            if (typeof showNotification === 'function') {
+              showNotification({
+                level: 'error',
+                message: error.response?.data?.message || error.message || '{{ _("Error restarting cycle") }}',
+                title: plugin.title || plugin.name
+              })
+            }
+          }
         },
         openInfo(name, installed){
           this.name_info = name
@@ -560,4 +641,6 @@
 {% endblock %}
 
 <!-- Specific Page JS goes HERE  -->
-{% block javascripts %}{% endblock javascripts %}
+{% block javascripts %}
+{{ super() }}
+{% endblock javascripts %}
