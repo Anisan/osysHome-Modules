@@ -1,5 +1,4 @@
 {
-  "Available": "Available",
   "Branch repository for update": "Branch repository for update",
   "Category": "Category",
   "Cycle restarted successfully": "Cycle restarted successfully",
@@ -14,13 +13,18 @@
   "Hidden in statusbar": "Hidden in statusbar",
   "Hide widget in control panel": "Hide widget in control panel",
   "Logging level": "Logging level",
+  "Module update": "Module update",
+  "Only with updates": "Only with updates",
   "Restart cycle": "Restart cycle",
   "Start cycle": "Start cycle",
   "Stop cycle": "Stop cycle",
   "Token": "Token Github",
   "Uninstall": "Uninstall",
+  "Update completed successfully": "Update completed successfully",
+  "Update failed": "Update failed",
   "Update time": "Update time",
   "Updates not found": "Updates not found",
+  "Updating module...": "Updating module...",
   "Upgrade": "Upgrade",
   "Url repository for update": "Url repository for update"
 }

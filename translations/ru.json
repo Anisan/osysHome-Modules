@@ -1,5 +1,4 @@
 {
-  "Available": "Доступно",
   "Branch repository for update": "Ветка репозитория для обновления",
   "Category": "Категория",
   "Cycle restarted successfully": "Цикл успешно перезапущен",
@@ -14,13 +13,18 @@
   "Hidden in statusbar": "Скрыто в панели управления",
   "Hide widget in control panel": "Скрыть виджет в панели управления",
   "Logging level": "Уровень логирования",
+  "Module update": "Обновление модуля",
+  "Only with updates": "Только модули с обновлениями",
   "Restart cycle": "Перезапустить цикл",
   "Start cycle": "Запустить цикл",
   "Stop cycle": "Остановить цикл",
   "Token": "Токен Github",
   "Uninstall": "Удалить",
+  "Update completed successfully": "Обновление успешно завершено",
+  "Update failed": "Ошибка обновления",
   "Update time": "Время обновления",
   "Updates not found": "Обновления не найдены",
+  "Updating module...": "Обновление модуля...",
   "Upgrade": "Обновить",
   "Url repository for update": "URL репозитория для обновления"
 }

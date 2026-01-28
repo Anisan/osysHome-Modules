@@ -72,17 +72,26 @@
         <hr>
         <div class="row mx-1">
           <div class="col-sm-12 col-md-6 col-lg-4 mb-2 px-1" v-for="(plugin,index) in filteredPlugins">
-            <div class="card p-2 cursor-pointer" style="height:100%;" id="widgetPlugin_{{index}}" :style="!plugin.active ? 'background-color: #eaecee;' : ''" @click="openInfo(plugin.name, true)">
+            <div
+              class="card p-2 cursor-pointer"
+              :class="{'module-inactive': !plugin.active}"
+              style="height:100%;"
+              id="widgetPlugin_{{index}}"
+              @click="openInfo(plugin.name, true)"
+            >
               <div class="d-flex flex-column" style="height: 100%;">
                 <!-- Верхний блок с контентом -->
                 <div class="d-flex flex-grow-1 align-items-start1">
                   <!-- Основной контент слева -->
                   <div class="flex-grow-1 me-3">
-                    <div class="fw-bold">
-                      <img :src="'/'+plugin.name+'/static/'+plugin.name+'.png'" height="25px" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'">
-                      <a v-if="plugin.title" :href="'/admin/'+plugin.name">[[ plugin.title ]]</a>
-                      <a v-else :href="'/admin/'+plugin.name">[[ plugin.name ]]</a>
-                      <span v-for="action in plugin.actions" class="badge bg-success">[[action]]</span>
+                    <div class="fw-bold d-flex align-items-center flex-wrap">
+                      <img :src="'/'+plugin.name+'/static/'+plugin.name+'.png'" height="25px" class="me-1" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'">
+                      <div class="me-2">
+                        <a v-if="plugin.title" :href="'/admin/'+plugin.name">[[ plugin.title ]]</a>
+                        <a v-else :href="'/admin/'+plugin.name">[[ plugin.name ]]</a>
+                      </div>
+                      <span v-if="!plugin.active" class="badge bg-secondary me-1">{{ _('Inactive') }}</span>
+                      <span v-for="action in plugin.actions" class="badge bg-success me-1">[[action]]</span>
                       <span v-if="plugin.stars"><i class="text-warning fa-solid fa-star ms-1"></i>[[plugin.stars]]</span>
                       <a v-if="plugin.url" :href="plugin.url" target="_blank"><i class="fab fa-github mx-1"></i></a>
                       <a :href="'/docs/plugins/'+plugin.name+'.html'" target="_blank"><i class="fas fa-info-circle"></i></a>
@@ -718,6 +727,11 @@
 <style>
     .cursor-pointer {
         cursor: pointer;
+    }
+    .module-inactive {
+        opacity: 0.6;
+        filter: grayscale(100%);
+        border: 1px dashed var(--bs-secondary);
     }
 </style>
 
