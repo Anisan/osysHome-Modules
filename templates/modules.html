@@ -45,7 +45,7 @@
     <div class="tab-content" id="myTabContent">
       <div class="tab-pane fade show active" id="installed" role="tabpanel" aria-labelledby="general-tab">
         <div class="row mx-1">
-          <div class="col-sm-12 col-md-6 col-lg-4 mb-2 px-1" v-if="osyshome && (!showOnlyUpdates || osyshome.update || osyshome.new)">
+          <div class="col-sm-12 col-md-6 col-lg-4 mb-2 px-1" v-if="osyshome && (!showOnlyUpdates || osyshome.update)">
             <div class="card p-2 cursor-pointer" style="height:100%;" @click="openInfo('osyshome', true)">
               <div class="d-flex justify-content-between align-items-start">
                 <div class="ms-2 me-auto">
@@ -401,7 +401,7 @@
           let data = this.plugins;
   
           if (this.showOnlyUpdates) {
-            data = data.filter(row => row.update || row.new);
+            data = data.filter(row => row.update);
           }
 
           if (this.search) {
