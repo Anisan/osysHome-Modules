@@ -21,10 +21,16 @@
       <span v-if="loading" class="fas fa-rotate fa-spin me-2"></span>
       <span v-else class="fas fa-rotate me-2"></span>
       {{ _('Refresh')}}
-    </button >
-    <div class="input-group">
-      <input v-model="search" type="text" class="form-control" placeholder="Filter...">
-      <button class="btn btn-outline-secondary" type="button" @click="search=null"><i class="fa-solid fa-broom"></i></button>
+    </button>
+    <div class="d-flex flex-grow-1 align-items-center">
+      <div class="form-check form-switch me-2 d-flex align-items-center">
+        <input class="form-check-input" type="checkbox" id="onlyUpdatesSwitch" v-model="showOnlyUpdates">
+        <label class="form-check-label ms-1 text-nowrap" for="onlyUpdatesSwitch">{{ _('Only with updates') }}</label>
+      </div>
+      <div class="input-group">
+        <input v-model="search" type="text" class="form-control" placeholder="Filter...">
+        <button class="btn btn-outline-secondary" type="button" @click="search=null"><i class="fa-solid fa-broom"></i></button>
+      </div>
     </div>
     <button type="button" class="btn btn-secondary text-nowrap ms-2" data-bs-toggle="modal" data-bs-target="#exampleModal">
       <span class="fas fa-gear me-2"></span>
@@ -39,8 +45,8 @@
     <div class="tab-content" id="myTabContent">
       <div class="tab-pane fade show active" id="installed" role="tabpanel" aria-labelledby="general-tab">
         <div class="row mx-1">
-          <div class="col-sm-12 col-md-6 col-lg-4 mb-2 px-1">
-            <div class="card p-2 cursor-pointer" style="height:100%;" v-if="osyshome" @click="openInfo('osyshome', true)">
+          <div class="col-sm-12 col-md-6 col-lg-4 mb-2 px-1" v-if="osyshome && (!showOnlyUpdates || osyshome.update || osyshome.new)">
+            <div class="card p-2 cursor-pointer" style="height:100%;" @click="openInfo('osyshome', true)">
               <div class="d-flex justify-content-between align-items-start">
                 <div class="ms-2 me-auto">
                   <div class="fw-bold">
@@ -53,7 +59,12 @@
                   <div>{{ _('Author')}}: <b>[[osyshome.author]]</b></div>
                 </div>
                 <span v-if="loading" class="fas fa-rotate fa-spin me-2"></span>
-                <a v-if="!loading && osyshome.update" href="?op=upgrade_core" class="btn btn-success" @click.stop><i class="fa-solid fa-upload"></i> {{ _('Upgrade')}}</a>
+                <a
+                  v-if="!loading && osyshome.update"
+                  href="?op=upgrade_core"
+                  class="btn btn-success"
+                  @click.stop.prevent="startUpgrade('?op=upgrade_core', osyshome.name)"
+                ><i class="fa-solid fa-upload"></i> {{ _('Upgrade')}}</a>
               </div>
             </div>
           </div>
@@ -84,7 +95,12 @@
                   <!-- Блок с кнопками Upgrade и Settings справа -->
                   <div class="d-flex flex-column align-items-end">
                     <span v-if="loading" class="fas fa-rotate fa-spin me-2 mb-2"></span>
-                    <a v-if="!loading && plugin.update" :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url" class="btn btn-success btn-sm mb-2" @click.stop><i class="fa-solid fa-upload"></i> {{ _('Upgrade')}}</a>
+                    <a
+                      v-if="!loading && plugin.update"
+                      :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url"
+                      class="btn btn-success btn-sm mb-2"
+                      @click.stop.prevent="startUpgrade('?op=upgrade&name='+plugin.name+'&url='+plugin.html_url, plugin.title || plugin.name)"
+                    ><i class="fa-solid fa-upload"></i> {{ _('Upgrade')}}</a>
                   </div>
                 </div>
                 <!-- Нижний блок с кнопками -->
@@ -152,9 +168,19 @@
                         <a :href="'/docs/plugins/'+plugin.name+'.html'" target="_blank"><i class="fas fa-info-circle"></i> {{ _('Help')}}</a>
                       </div>
                     </div>
-                    <div class="d-flex flex-column align-items-end">
-                      <a v-if="plugin.update && plugin.name !='osysHome'" class="btn btn-success mb-2" :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url" @click.stop><i class="fa-solid fa-upload"></i> {{ _('Upgrade')}}</a>
-                      <a v-if="plugin.update && plugin.name =='osysHome'" class="btn btn-success mb-2" href="?op=upgrade_core" @click.stop><i class="fa-solid fa-upload"></i> {{ _('Upgrade')}}</a>
+                      <div class="d-flex flex-column align-items-end">
+                      <a
+                        v-if="plugin.update && plugin.name !='osysHome'"
+                        class="btn btn-success mb-2"
+                        :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url"
+                        @click.stop.prevent="startUpgrade('?op=upgrade&name='+plugin.name+'&url='+plugin.html_url, plugin.title || plugin.name)"
+                      ><i class="fa-solid fa-upload"></i> {{ _('Upgrade')}}</a>
+                      <a
+                        v-if="plugin.update && plugin.name =='osysHome'"
+                        class="btn btn-success mb-2"
+                        href="?op=upgrade_core"
+                        @click.stop.prevent="startUpgrade('?op=upgrade_core', plugin.name)"
+                      ><i class="fa-solid fa-upload"></i> {{ _('Upgrade')}}</a>
                       <a v-if="'active' in plugin && !systemModules.includes(plugin.name)" class="btn btn-danger" :href="'?op=uninstall&name='+plugin.name" @click.stop onClick="return confirm('Uninstall module?')"><i class="fa-solid fa-trash"></i> {{ _('Uninstall')}}</a>
                       <a v-if="!plugin.installed && plugin.name !='osysHome' && plugin.active === undefined" class="btn btn-success" :href="'?op=install&name='+plugin.shortName+'&author='+plugin.author" @click.stop><i class="fa-solid fa-upload"></i> {{ _('Install')}}</a>
                     </div>
@@ -179,8 +205,18 @@
                             <div>
                               <span v-if="item.installed" class="badge bg-success">{{ _('Installed')}}</span>
                               <span v-else>
-                                <a v-if="plugin.name == 'osysHome'" class="badge bg-secondary mb-2" :href="'?op=upgrade_core&commit='+item.sha" @click.stop><i class="fa-solid fa-upload"></i> {{ _('Install')}}</a>
-                                <a v-else class="badge bg-secondary mb-2" :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url+'&commit='+item.sha" @click.stop><i class="fa-solid fa-upload"></i> {{ _('Install')}}</a>
+                                <a
+                                  v-if="plugin.name == 'osysHome'"
+                                  class="badge bg-secondary mb-2"
+                                  :href="'?op=upgrade_core&commit='+item.sha"
+                                  @click.stop.prevent="startUpgrade('?op=upgrade_core&commit='+item.sha, plugin.name)"
+                                ><i class="fa-solid fa-upload"></i> {{ _('Install')}}</a>
+                                <a
+                                  v-else
+                                  class="badge bg-secondary mb-2"
+                                  :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url+'&commit='+item.sha"
+                                  @click.stop.prevent="startUpgrade('?op=upgrade&name='+plugin.name+'&url='+plugin.html_url+'&commit='+item.sha, plugin.title || plugin.name)"
+                                ><i class="fa-solid fa-upload"></i> {{ _('Install')}}</a>
                               </span>
                               <small class="opacity-50 text-nowrap">[[item.commit.author.date]]</small>
                             </div>
@@ -264,6 +300,37 @@
             </div>
         </div>
   </div>
+
+  <!-- Модальное окно обновления модуля (под управлением Vue) -->
+  <div class="modal fade" id="upgradeModal" tabindex="-1" aria-labelledby="upgradeModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="upgradeModalLabel">{{ _('Module update') }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ _('Close')}}"></button>
+        </div>
+        <div class="modal-body">
+          <p class="fw-bold mb-2">[[ upgradeTitle ]]</p>
+          <div v-if="upgradeInProgress" class="d-flex align-items-center">
+            <span class="fas fa-rotate fa-spin me-2"></span>
+            <span>{{ _('Updating module...') }}</span>
+          </div>
+          <div v-else>
+            <div v-if="upgradeError" class="text-danger">
+              <i class="fa-solid fa-triangle-exclamation me-1"></i>{{ _('Update failed') }}
+              <div class="small mt-1">[[ upgradeError ]]</div>
+            </div>
+            <div v-else class="text-success d-flex align-items-center">
+              <i class="fa-solid fa-check me-1"></i>{{ _('Update completed successfully') }}
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _('Close')}}</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -274,6 +341,7 @@
         token:"{{token}}",
         systemModules:['Modules','Objects','Users','Scheduler','wsServer'],
         search: '',
+        showOnlyUpdates: false,
         sortKey: 'runtime',
         sortAsc: true,
         plugin: undefined,
@@ -304,6 +372,10 @@
           "level_logging": "None",
         },
         resultSave:"",
+        upgradeTitle: "",
+        upgradeStatus: "",
+        upgradeError: null,
+        upgradeInProgress: false,
       },
       async created() {
         await this.fetchData()
@@ -312,16 +384,26 @@
         if (localStorage.modules_filter) {
           this.search = localStorage.modules_filter;
         }
+        if (localStorage.modules_show_only_updates) {
+          this.showOnlyUpdates = localStorage.modules_show_only_updates === 'true';
+        }
       },
       watch: {
         search(value) {
           localStorage.modules_filter = value;
+        },
+        showOnlyUpdates(value) {
+          localStorage.modules_show_only_updates = value;
         },
       },
       computed: {
         filteredPlugins() {
           let data = this.plugins;
   
+          if (this.showOnlyUpdates) {
+            data = data.filter(row => row.update || row.new);
+          }
+
           if (this.search) {
             data = data.filter(row =>
               Object.values(row).some(val =>
@@ -600,6 +682,35 @@
           setTimeout(() => {
             this.resultSave = null; // Обнуляем значение
           }, 5000);
+        },
+        async startUpgrade(url, title) {
+          this.upgradeTitle = title
+          this.upgradeStatus = ""
+          this.upgradeError = null
+          this.upgradeInProgress = true
+          $('#upgradeModal').modal('show')
+          let success = false
+          try {
+            const response = await axios.get(url + (url.includes('?') ? '&' : '?') + 'ajax=1')
+            if (response.data && response.data.status === 'ok') {
+              success = true
+            } else if (response.data && response.data.status === 'error') {
+              this.upgradeError = response.data.message || 'Error'
+            } else {
+              this.upgradeError = response.statusText || 'HTTP error'
+            }
+          } catch (error) {
+            console.error(error)
+            this.upgradeError = error.response?.data?.message || error.message
+          } finally {
+            this.upgradeInProgress = false
+            await this.fetchData()
+            if (success) {
+              setTimeout(() => {
+                $('#upgradeModal').modal('hide')
+              }, 1500)
+            }
+          }
         }
       }
     });

@@ -8,7 +8,7 @@ import datetime
 import shutil
 import subprocess
 from app.configuration import Config
-from flask import render_template, redirect
+from flask import render_template, redirect, jsonify
 from sqlalchemy import text
 from app.core.main.BasePlugin import BasePlugin
 from app.core.main.PluginsHelper import plugins
@@ -34,6 +34,7 @@ class Modules(BasePlugin):
     def admin(self, request):
 
         op = request.args.get("op",None)
+        is_ajax = request.args.get("ajax") == "1"
 
         if op == 'upgrade':
             name = request.args.get('name',None)
@@ -57,11 +58,17 @@ class Modules(BasePlugin):
                 db.session.commit()
                 addNotify("Success update",f'Success update module {name}',CategoryNotify.Info,self.name)
                 setProperty("SystemVar.NeedRestart", True, self.name)
+                if is_ajax:
+                    return jsonify({"status": "ok", "message": f"Success update module {name}"}), 200
             except Exception as ex:
                 self.logger.exception(ex)
                 addNotify("Error update",f'Error update module {name}',CategoryNotify.Error,self.name)
+                if is_ajax:
+                    return jsonify({"status": "error", "message": str(ex)}), 500
 
-            return redirect(self.name)
+            if not is_ajax:
+                return redirect(self.name)
+            return jsonify({"status": "ok"}), 200
 
         if op == 'upgrade_core':
             owner = 'Anisan'
@@ -77,11 +84,17 @@ class Modules(BasePlugin):
                 setProperty("SystemVar.update", False, self.name)
                 addNotify("Success update", 'Success update osysHome',CategoryNotify.Info,self.name)
                 setProperty("SystemVar.NeedRestart", True, self.name)
+                if is_ajax:
+                    return jsonify({"status": "ok", "message": "Success update osysHome"}), 200
             except Exception as ex:
                 self.logger.exception(ex)
                 addNotify("Error update", 'Error update osysHome',CategoryNotify.Error,self.name)
+                if is_ajax:
+                    return jsonify({"status": "error", "message": str(ex)}), 500
 
-            return redirect(self.name)
+            if not is_ajax:
+                return redirect(self.name)
+            return jsonify({"status": "ok"}), 200
 
         if op == 'install':
             name = request.args.get('name',None)
