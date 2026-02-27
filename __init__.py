@@ -196,7 +196,7 @@ class Modules(BasePlugin):
         token = self.config.get('token',None)
         if token:
             github_headers['Authorization'] = f'token {token}'
-        response = requests.get(url, headers=github_headers)
+        response = requests.get(url, headers=github_headers, timeout=Config.HTTP_REQUEST_TIMEOUT)
         if response.status_code == 200:
             return response.json()
         else:
@@ -225,7 +225,7 @@ class Modules(BasePlugin):
 
         # Скачивание архива
         self.logger.info("Downloading %s...",url)
-        response = requests.get(url)
+        response = requests.get(url, timeout=Config.HTTP_REQUEST_TIMEOUT)
 
         if response.status_code == 200:
             with open(local_filename, 'wb') as f:
@@ -352,7 +352,7 @@ class Modules(BasePlugin):
         try:
             # Сначала проверяем лимиты
             rate_limit_url = "https://api.github.com/rate_limit"
-            rate_response = requests.get(rate_limit_url, headers=headers)
+            rate_response = requests.get(rate_limit_url, headers=headers, timeout=Config.HTTP_REQUEST_TIMEOUT)
 
             if rate_response.status_code == 200:
                 rate_data = rate_response.json()
@@ -365,7 +365,7 @@ class Modules(BasePlugin):
                         time.sleep(wait_time)
 
             # Основной запрос
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=Config.HTTP_REQUEST_TIMEOUT)
 
             # Обрабатываем возможные ошибки
             if response.status_code == 403 and 'rate limit exceeded' in response.text.lower():
@@ -374,7 +374,7 @@ class Modules(BasePlugin):
                 if wait_time > 0:
                     time.sleep(wait_time)
                 # Повторяем запрос после ожидания
-                response = requests.get(url, headers=headers)
+                response = requests.get(url, headers=headers, timeout=Config.HTTP_REQUEST_TIMEOUT)
 
             response.raise_for_status()
 
