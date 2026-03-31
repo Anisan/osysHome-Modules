@@ -94,7 +94,9 @@
                       <span v-for="action in plugin.actions" class="badge bg-success me-1">[[action]]</span>
                       <span v-if="plugin.stars"><i class="text-warning fa-solid fa-star ms-1"></i>[[plugin.stars]]</span>
                       <a v-if="plugin.url" :href="plugin.url" target="_blank"><i class="fab fa-github mx-1"></i></a>
-                      <a :href="'/docs/plugins/'+plugin.name+'.html'" target="_blank"><i class="fas fa-info-circle"></i></a>
+                      {% if has_docs|default(false) %}
+                      <a :href="'/docs/?category='+plugin.name" target="_blank"><i class="fas fa-info-circle"></i></a>
+                      {% endif %}
                     </div>
                     <span v-if="plugin.active">
                       [[ plugin.description ]] (version - [[ plugin.version ]])
