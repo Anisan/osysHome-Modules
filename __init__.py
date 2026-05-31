@@ -7,16 +7,34 @@ import time
 import datetime
 import shutil
 import subprocess
+import base64
+from html import escape
+from urllib.parse import urlparse
 from app.configuration import Config
-from flask import render_template, redirect, jsonify
+from flask import render_template, redirect, jsonify, request, current_app
 from sqlalchemy import text
 from app.core.main.BasePlugin import BasePlugin
 from app.core.main.PluginsHelper import plugins
 from app.core.models.Plugins import Plugin
-from app.database import db, session_scope, get_now_to_utc, convert_utc_to_local
+from app.authentication.handlers import handle_admin_required
+from app.database import db, session_scope, get_now_to_utc, convert_utc_to_local, row2dict
 from app.core.lib.common import addNotify, CategoryNotify
 from app.core.lib.object import setProperty, getProperty
 from plugins.Modules.forms.SettingForms import SettingsForm
+
+_markdown_lib = None
+_markdown_module = None
+try:
+    import markdown
+    _markdown_lib = 'markdown'
+    _markdown_module = markdown
+except ImportError:
+    try:
+        import markdown2
+        _markdown_lib = 'markdown2'
+        _markdown_module = markdown2
+    except ImportError:
+        pass
 
 class Modules(BasePlugin):
 
@@ -30,6 +48,90 @@ class Modules(BasePlugin):
 
     def initialization(self):
         pass
+
+    def route_github_api(self):
+        base = f"/api/{self.name}/github"
+
+        @self.blueprint.route(f"{base}/catalog", methods=["GET"])
+        @handle_admin_required
+        def github_catalog():
+            with session_scope() as session:
+                ps = session.query(Plugin).order_by(Plugin.name).all()
+                installed = [row2dict(plugin) for plugin in ps]
+            catalog = self.get_github_catalog(installed)
+            return jsonify({"success": True, **catalog})
+
+        @self.blueprint.route(f"{base}/branches", methods=["GET"])
+        @handle_admin_required
+        def github_branches():
+            owner = request.args.get("owner")
+            repo = request.args.get("repo")
+            url = request.args.get("url")
+            module_name = request.args.get("module")
+            owner, repo = self._resolve_github_target(owner, repo, url=url, module_name=module_name)
+            if not owner or not repo:
+                return jsonify({"success": False, "message": "owner and repo are required"}), 400
+
+            branches, error = self.get_github_branches(owner, repo)
+            if error:
+                return jsonify({"success": False, "message": error}), 502
+            return jsonify({"success": True, "result": branches})
+
+        @self.blueprint.route(f"{base}/commits", methods=["GET"])
+        @handle_admin_required
+        def github_commits():
+            owner = request.args.get("owner")
+            repo = request.args.get("repo")
+            branch = request.args.get("branch")
+            url = request.args.get("url")
+            module_name = request.args.get("module")
+            per_page = request.args.get("per_page", 15, type=int)
+            owner, repo = self._resolve_github_target(owner, repo, url=url, module_name=module_name)
+            if not owner or not repo:
+                return jsonify({"success": False, "message": "owner and repo are required"}), 400
+
+            commits, error = self.get_github_commits(owner, repo, branch=branch, per_page=per_page)
+            if error:
+                return jsonify({"success": False, "message": error}), 502
+            return jsonify({"success": True, "result": commits})
+
+    def route_readme(self):
+        @self.blueprint.route(f"/api/{self.name}/readme", methods=["GET"])
+        @handle_admin_required
+        def module_readme():
+            lang = request.args.get('lang', current_app.config.get('DEFAULT_LANGUAGE', 'en'))
+            installed = request.args.get('installed', '0').lower() in ('1', 'true', 'yes')
+            module_name = request.args.get('module')
+            owner = request.args.get('owner')
+            repo = request.args.get('repo')
+            branch = request.args.get('branch')
+            url = request.args.get('url')
+
+            content, meta, error = self.get_readme_content(
+                installed=installed,
+                module_name=module_name,
+                owner=owner,
+                repo=repo,
+                branch=branch,
+                url=url,
+                lang=lang,
+            )
+            if error:
+                status = 404 if 'not found' in error.lower() else 502
+                return jsonify({"success": False, "message": error}), status
+
+            html_content, _ = self.markdown_to_html(
+                content,
+                lang=lang,
+                image_prefix=meta.get('image_prefix'),
+                github_raw_base=meta.get('github_raw_base'),
+            )
+            return jsonify({
+                "success": True,
+                "content": html_content,
+                "lang": lang,
+                "source": meta.get('source'),
+            })
 
     def admin(self, request):
 
@@ -174,7 +276,6 @@ class Modules(BasePlugin):
 
         content = {
             "form": settings,
-            "token": self.config.get('token',''),
         }
         return self.render("modules.html", content)
 
@@ -184,29 +285,314 @@ class Modules(BasePlugin):
 
         if match:
             owner, repo = match.groups()
+            if repo.endswith('.git'):
+                repo = repo[:-4]
             return owner, repo
         else:
             return None, None
 
-    def github_request(self, url):
-        github_headers = {
+    def _resolve_github_target(self, owner=None, repo=None, url=None, module_name=None):
+        owner = (owner or '').strip() or None
+        repo = (repo or '').strip() or None
+
+        if owner and repo:
+            return owner, repo
+
+        if url:
+            parsed_owner, parsed_repo = self.extract_owner_and_repo(url)
+            if parsed_owner and parsed_repo:
+                return parsed_owner, parsed_repo
+
+        if module_name:
+            name = module_name.strip()
+            if name.lower() == 'osyshome':
+                return 'Anisan', 'osysHome'
+            if name.startswith('osysHome-'):
+                return 'Anisan', name
+            return 'Anisan', f'osysHome-{name}'
+
+        return None, None
+
+    def _github_auth_header(self, token):
+        token = (token or '').strip()
+        if not token:
+            return None
+        scheme = 'Bearer' if token.startswith('github_pat_') else 'token'
+        return f'{scheme} {token}'
+
+    def _github_base_headers(self):
+        return {
             'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'Python-Commit-Checker',
+            'User-Agent': 'osysHome-Modules',
         }
-        token = self.config.get('token',None)
-        if token:
-            github_headers['Authorization'] = f'token {token}'
-        response = requests.get(url, headers=github_headers, timeout=Config.HTTP_REQUEST_TIMEOUT)
+
+    def _github_response_error(self, response):
+        try:
+            payload = response.json()
+            if isinstance(payload, dict) and payload.get('message'):
+                return payload['message']
+        except ValueError:
+            pass
+        if response.text:
+            return response.text[:200]
+        return f'HTTP {response.status_code}'
+
+    def github_request(self, url, allow_anonymous_fallback=True):
+        headers = self._github_base_headers()
+        token = self.config.get('token', None)
+        auth = self._github_auth_header(token)
+        if auth:
+            headers['Authorization'] = auth
+
+        try:
+            response = requests.get(url, headers=headers, timeout=Config.HTTP_REQUEST_TIMEOUT)
+        except requests.exceptions.RequestException as ex:
+            self.logger.warning("GitHub API request failed for %s: %s", url, ex)
+            return {'_error': True, 'status': 0, 'message': str(ex)}
+
         if response.status_code == 200:
             return response.json()
+
+        if allow_anonymous_fallback and auth and response.status_code in (401, 403):
+            self.logger.warning(
+                "GitHub token rejected (%s), retrying without authentication: %s",
+                response.status_code,
+                self._github_response_error(response),
+            )
+            try:
+                response = requests.get(
+                    url,
+                    headers=self._github_base_headers(),
+                    timeout=Config.HTTP_REQUEST_TIMEOUT,
+                )
+            except requests.exceptions.RequestException as ex:
+                self.logger.warning("GitHub API anonymous retry failed for %s: %s", url, ex)
+                return {'_error': True, 'status': 0, 'message': str(ex)}
+            if response.status_code == 200:
+                return response.json()
+
+        message = self._github_response_error(response)
+        self.logger.warning("GitHub API error %s for %s: %s", response.status_code, url, message)
+        return {'_error': True, 'status': response.status_code, 'message': message}
+
+    def _github_request_failed(self, data):
+        if data is None:
+            return True
+        return isinstance(data, dict) and data.get('_error')
+
+    def _github_error_message(self, data, default="GitHub API unavailable"):
+        if isinstance(data, dict):
+            return data.get('message') or default
+        return default
+
+    def get_github_branches(self, owner, repo):
+        url = f"https://api.github.com/repos/{owner}/{repo}/branches"
+        data = self.github_request(url)
+        if self._github_request_failed(data):
+            return None, self._github_error_message(data)
+        return data, None
+
+    def get_github_commits(self, owner, repo, branch=None, per_page=15):
+        url = f"https://api.github.com/repos/{owner}/{repo}/commits?"
+        if branch:
+            url += f"sha={branch}&"
+        url += f"per_page={per_page}"
+        data = self.github_request(url)
+        if self._github_request_failed(data):
+            return None, self._github_error_message(data)
+        if not isinstance(data, list):
+            data = [data]
+        return data, None
+
+    def _readme_filenames(self, lang):
+        filenames = []
+        if lang and lang != 'en':
+            filenames.append(f'README.{lang}.md')
+        filenames.append('README.md')
+        return filenames
+
+    def _read_local_readme(self, base_path, lang):
+        for filename in self._readme_filenames(lang):
+            readme_path = os.path.join(base_path, filename)
+            if os.path.isfile(readme_path):
+                with open(readme_path, 'r', encoding='utf-8') as f:
+                    return f.read(), filename
+        return None, None
+
+    def _fetch_github_readme(self, owner, repo, branch, lang):
+        ref = branch or 'master'
+        for filename in self._readme_filenames(lang):
+            url = f"https://api.github.com/repos/{owner}/{repo}/contents/{filename}?ref={ref}"
+            data = self.github_request(url)
+            if self._github_request_failed(data):
+                continue
+            if isinstance(data, dict) and data.get('encoding') == 'base64' and data.get('content'):
+                try:
+                    return base64.b64decode(data['content']).decode('utf-8'), filename
+                except (ValueError, UnicodeDecodeError) as ex:
+                    self.logger.warning("Failed to decode README %s/%s: %s", owner, repo, ex)
+        return None, None
+
+    def markdown_to_html(self, readme_content, lang=None, image_prefix=None, github_raw_base=None):
+        html_content = readme_content
+        if _markdown_lib and _markdown_module:
+            try:
+                if _markdown_lib == 'markdown':
+                    md = _markdown_module.Markdown(extensions=['fenced_code', 'tables', 'toc', 'codehilite'])
+                    html_content = md.convert(readme_content)
+                elif _markdown_lib == 'markdown2':
+                    html_content = _markdown_module.markdown(
+                        readme_content,
+                        extras=['fenced-code-blocks', 'tables', 'header-ids'],
+                    )
+
+                def fix_image_path(match):
+                    img_tag = match.group(0)
+                    src_match = re.search(r'src=["\']([^"\']+)["\']', img_tag)
+                    if not src_match:
+                        return img_tag
+                    src_path = src_match.group(1)
+                    parsed = urlparse(src_path)
+                    if parsed.scheme or src_path.startswith('/') or src_path.startswith('data:'):
+                        return img_tag
+                    clean_path = src_path.lstrip('./')
+                    if github_raw_base:
+                        absolute_path = f"{github_raw_base}{clean_path}"
+                    elif image_prefix:
+                        absolute_path = f"/{image_prefix}/{clean_path}"
+                    else:
+                        absolute_path = f"/{clean_path}"
+                    return re.sub(r'src=["\'][^"\']+["\']', f'src="{absolute_path}"', img_tag)
+
+                html_content = re.sub(r'<img[^>]+src=["\'][^"\']+["\'][^>]*>', fix_image_path, html_content)
+            except Exception as ex:
+                self.logger.warning("Error parsing Markdown: %s", ex)
+                html_content = f"<pre>{escape(readme_content)}</pre>"
         else:
-            return None
+            html_content = f"<pre>{escape(readme_content)}</pre>"
+        return html_content, image_prefix
+
+    def get_readme_content(self, installed, module_name, owner=None, repo=None, branch=None, url=None, lang='en'):
+        if installed:
+            if not module_name:
+                return None, None, "module is required"
+            if module_name.lower() == 'osyshome':
+                base_path = Config.APP_DIR
+                meta = {'source': 'local', 'image_prefix': None}
+            else:
+                base_path = os.path.join(Config.PLUGINS_FOLDER, module_name)
+                meta = {'source': 'local', 'image_prefix': module_name}
+            content, _ = self._read_local_readme(base_path, lang)
+            if content is None:
+                return None, None, f"README file not found for '{module_name}'"
+            return content, meta, None
+
+        owner, repo = self._resolve_github_target(owner, repo, url=url, module_name=module_name)
+        if not owner or not repo:
+            return None, None, "owner and repo are required"
+        content, _ = self._fetch_github_readme(owner, repo, branch, lang)
+        if content is None:
+            return None, None, f"README file not found for '{owner}/{repo}'"
+        ref = branch or 'master'
+        meta = {
+            'source': 'github',
+            'github_raw_base': f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/",
+        }
+        return content, meta, None
+
+    def get_github_catalog(self, installed_plugins):
+        """Fetch osysHome-* repositories from GitHub and split into available/enrichment lists."""
+        available = []
+        enrichments = {}
+        osyshome_enrichment = None
+
+        data = self.github_request("https://api.github.com/search/repositories?q=osysHome&per_page=100")
+        if not data or data.get('_error') or 'items' not in data:
+            message = None
+            if isinstance(data, dict):
+                if data.get('_error'):
+                    message = data.get('message')
+                else:
+                    message = data.get('message')
+            return {
+                "available": [],
+                "enrichments": {},
+                "osyshome_enrichment": None,
+                "error": message or "GitHub API unavailable",
+            }
+
+        installed_by_name = {plugin['name']: plugin for plugin in installed_plugins}
+
+        for element in data['items']:
+            repo_name = element['name']
+
+            if repo_name == 'osysHome':
+                osyshome_enrichment = {
+                    "stars": element.get('stargazers_count', 0),
+                    "owner": "Anisan",
+                    "repo": "osysHome",
+                    "branch": element.get('default_branch'),
+                }
+                continue
+
+            parts = repo_name.split('-', 1)
+            if len(parts) < 2:
+                continue
+
+            short_name = parts[1]
+            info = {
+                "name": repo_name,
+                "repo": repo_name,
+                "shortName": short_name,
+                "description": element.get('description') or '',
+                "author": element['owner']['login'],
+                "owner": element['owner']['login'],
+                "updated": None,
+                "url": element['html_url'],
+                "topic": element.get('topics') or [],
+                "stars": element.get('stargazers_count', 0),
+                "branch": element.get('default_branch'),
+                "image": (
+                    f"https://raw.githubusercontent.com/{element['owner']['login']}/"
+                    f"{repo_name}/{element.get('default_branch')}/static/{short_name}.png"
+                ),
+            }
+
+            folder_path = os.path.join(Config.PLUGINS_FOLDER, short_name)
+            if os.path.isdir(folder_path):
+                enrich = {
+                    "stars": info["stars"],
+                    "owner": info["owner"],
+                    "repo": info["repo"],
+                    "branch": info["branch"],
+                    "image": f"/{short_name}/static/{short_name}.png",
+                    "html_url": info["url"],
+                }
+                installed_plugin = installed_by_name.get(short_name)
+                if installed_plugin and installed_plugin.get('author') == 'Undefined':
+                    enrich['author'] = info['author']
+                enrichments[short_name] = enrich
+            else:
+                available.append(info)
+
+        return {
+            "available": available,
+            "enrichments": enrichments,
+            "osyshome_enrichment": osyshome_enrichment,
+            "error": None,
+        }
 
     def get_github_repo_info(self, owner, repo):
-        return self.github_request(f"https://api.github.com/repos/{owner}/{repo}")
+        data = self.github_request(f"https://api.github.com/repos/{owner}/{repo}")
+        if not data or data.get('_error'):
+            return None
+        return data
 
     def get_github_commit_info(self, owner, repo, commit):
-        return self.github_request(f"https://api.github.com/repos/{owner}/{repo}/commits/{commit}")
+        data = self.github_request(f"https://api.github.com/repos/{owner}/{repo}/commits/{commit}")
+        if not data or data.get('_error'):
+            return None
+        return data
 
     def download_and_extract_github_repo(self, owner, repo, branch, commit=None, target_folder='.'):
         dt = get_now_to_utc()
@@ -347,7 +733,9 @@ class Modules(BasePlugin):
         }
 
         if github_token:
-            headers["Authorization"] = f"token {github_token}"
+            auth = self._github_auth_header(github_token)
+            if auth:
+                headers["Authorization"] = auth
 
         try:
             # Сначала проверяем лимиты
@@ -438,11 +826,11 @@ class Modules(BasePlugin):
         repos = {}
         try:
             data = self.github_request("https://api.github.com/search/repositories?q=osysHome&per_page=100")
-            data = data['items']
-            for item in data:
-                name = item['name'].split('-')
-                if len(name) > 1:
-                    repos[name[1]] = item['html_url']
+            if data and not data.get('_error') and 'items' in data:
+                for item in data['items']:
+                    name = item['name'].split('-')
+                    if len(name) > 1:
+                        repos[name[1]] = item['html_url']
         except Exception as ex:
             self.logger.exception(ex)
 
