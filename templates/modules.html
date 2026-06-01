@@ -183,16 +183,36 @@
     border: 1px solid rgba(var(--bs-secondary-rgb), 0.25);
   }
 
-  #infoModal .modal-dialog {
+  #infoModal .modal-dialog.modal-fullscreen {
     max-height: calc(100vh - 2rem);
     margin: 1rem auto;
+    height: auto;
+    max-width: 800px;
   }
 
-  #infoModal .modal-content {
+  #infoModal .modal-dialog.modal-fullscreen .modal-content {
     max-height: calc(100vh - 2rem);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    height: auto;
+    border: var(--bs-modal-border-width) solid var(--bs-modal-border-color);
+    border-radius: var(--bs-modal-border-radius);
+  }
+
+  @media (max-width: 767.98px) {
+    #infoModal .modal-dialog.modal-fullscreen {
+      margin: 0;
+      max-width: 100vw;
+      height: 100vh;
+    }
+
+    #infoModal .modal-dialog.modal-fullscreen .modal-content {
+      height: 100vh;
+      max-height: 100vh;
+      border: 0;
+      border-radius: 0;
+    }
   }
 
   #infoModal .modal-header,
@@ -223,8 +243,132 @@
     overflow-y: auto;
   }
 
+  .modules-history-item {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+    padding: 0.5rem;
+  }
+
+  .modules-history-avatar {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+  }
+
+  .modules-history-content {
+    display: flex;
+    gap: 0.5rem;
+    width: 100%;
+    justify-content: space-between;
+    min-width: 0;
+  }
+
+  .modules-history-main {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .modules-history-message {
+    margin-bottom: 0;
+    white-space: pre-line;
+    word-break: break-word;
+  }
+
+  .modules-history-author {
+    margin-bottom: 0;
+  }
+
+  .modules-history-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.25rem;
+    flex-shrink: 0;
+    min-width: 120px;
+  }
+
   .update-badge-pulse {
     animation: modules-pulse 2s ease-in-out infinite;
+  }
+
+  @media (max-width: 767.98px) {
+    .modules-toolbar {
+      position: static;
+      top: auto;
+    }
+
+    /* Keep this block last so it wins on mobile fullscreen modal */
+    #infoModal .modal-body {
+      overflow: hidden !important;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    #infoModal #myTabContent {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    #infoModal #myTabContent .tab-pane.active {
+      height: 100%;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    #infoModal .modules-readme-scroll,
+    #infoModal .modules-history-list {
+      max-height: none !important;
+      overflow: visible !important;
+    }
+
+    #infoModal .modules-history-item {
+      gap: 0.6rem;
+    }
+
+    #infoModal .modules-history-content {
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    #infoModal .modules-history-side {
+      width: 100%;
+      min-width: 0;
+      align-items: flex-start;
+    }
+
+    #infoModal .modules-history-side .badge {
+      max-width: 100%;
+      white-space: normal;
+    }
+
+    #infoModal .modules-history-side small {
+      text-wrap: wrap;
+      word-break: break-word;
+    }
+
+    .modules-page .btn {
+      white-space: normal;
+    }
+
+    .modules-page .module-card {
+      padding: 0.75rem !important;
+    }
+
+    .modules-page .module-card .d-flex.gap-3.align-items-start {
+      gap: 0.6rem !important;
+    }
+
+    .modules-page .module-card .module-icon {
+      width: 34px;
+      height: 34px;
+    }
+
+    .modules-page .dropdown-menu {
+      max-width: min(92vw, 320px);
+    }
   }
 
   @keyframes modules-pulse {
@@ -298,8 +442,8 @@
         <span class="fas fa-rotate fa-spin fa-2x"></span>
         <span>{{ _('Loading...') }}</span>
       </div>
-      <div v-else class="row g-2">
-        <div class="col-sm-12 col-md-6 col-xl-4" v-if="osyshome">
+      <div v-else class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-2">
+        <div class="col" v-if="osyshome">
           <div class="card module-card p-3">
             <div class="d-flex gap-3 align-items-start">
               <img src="{{ config.ASSETS_ROOT }}/images/logo-dark.png" class="module-icon" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'" alt="osysHome">
@@ -346,7 +490,7 @@
           </div>
         </div>
 
-        <div class="col-sm-12 col-md-6 col-xl-4" v-for="(plugin,index) in filteredPlugins" :key="'installed-'+plugin.name">
+        <div class="col" v-for="(plugin,index) in filteredPlugins" :key="'installed-'+plugin.name">
           <div
             class="card module-card p-3"
             :class="{'module-inactive': !plugin.active}"
@@ -453,8 +597,8 @@
             <i v-else class="fa-solid fa-upload me-1"></i>{{ _('Update all') }}
           </button>
         </div>
-        <div class="row g-2">
-        <div class="col-sm-12 col-md-6 col-xl-4" v-if="osyshome && osyshome.update">
+        <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-2">
+        <div class="col" v-if="osyshome && osyshome.update">
           <div class="card module-card p-3 border-warning">
             <div class="d-flex gap-3 align-items-start">
               <img src="{{ config.ASSETS_ROOT }}/images/logo-dark.png" class="module-icon" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'" alt="osysHome">
@@ -507,7 +651,7 @@
           </div>
         </div>
 
-        <div class="col-sm-12 col-md-6 col-xl-4" v-for="(plugin,index) in filteredUpdates" :key="'update-'+plugin.name">
+        <div class="col" v-for="(plugin,index) in filteredUpdates" :key="'update-'+plugin.name">
           <div class="card module-card p-3 border-warning">
             <div class="d-flex gap-3 align-items-start">
               <img :src="'/'+plugin.name+'/static/'+plugin.name+'.png'" class="module-icon" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'" :alt="plugin.name">
@@ -579,8 +723,8 @@
         <div class="fw-semibold" v-if="search">{{ _('No modules found') }}</div>
         <div class="fw-semibold" v-else>{{ _('All GitHub modules are already installed') }}</div>
       </div>
-      <div v-else class="row g-2">
-        <div class="col-sm-12 col-md-6 col-xl-4" v-for="(plugin,index) in filteredPluginsGithub" :key="'available-'+plugin.name">
+      <div v-else class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-2">
+        <div class="col" v-for="(plugin,index) in filteredPluginsGithub" :key="'available-'+plugin.name">
           <div class="card module-card p-3" :id="'widgetGit_'+index">
             <div class="d-flex gap-3 align-items-start">
               <img :src="plugin.image" class="module-icon" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'" :alt="plugin.name">
@@ -632,7 +776,7 @@
   </div>
 
   <div class="modal fade" id="infoModal" tabindex="-1">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-fullscreen">
             <div v-if="plugin" class="modal-content">
                 <div v-if="plugin" class="modal-header">
                   <div class="d-flex flex-grow-1 align-items-start gap-3">
@@ -709,15 +853,15 @@
                         <div>{{ _('No commit history') }}</div>
                       </div>
                       <div v-else class="list-group modules-history-list">
-                        <div v-for="item in commits" :href="item.html_url" target="_blank" class="list-group-item list-group-item-action d-flex p-1" aria-current="true">
-                          <img v-if="item.author" :src="item.author.avatar_url" alt="" width="32" height="32" class="rounded-circle flex-shrink-0 me-2">
-                          <img v-else src="/Modules/static/Modules.png" alt="" width="32" height="32" class="rounded-circle flex-shrink-0 me-2">
-                          <div class="d-flex gap-2 w-100 justify-content-between">
-                            <div>
-                              <h6 class="mb-0" style="white-space: pre-line">[[item.commit.message]]</h6>
-                              <p class="mb-0 opacity-75">[[item.commit.author.name]]</p>
+                        <div v-for="item in commits" :href="item.html_url" target="_blank" class="list-group-item list-group-item-action modules-history-item" aria-current="true">
+                          <img v-if="item.author" :src="item.author.avatar_url" alt="" class="rounded-circle modules-history-avatar">
+                          <img v-else src="/Modules/static/Modules.png" alt="" class="rounded-circle modules-history-avatar">
+                          <div class="modules-history-content">
+                            <div class="modules-history-main">
+                              <h6 class="modules-history-message">[[item.commit.message]]</h6>
+                              <p class="opacity-75 modules-history-author">[[item.commit.author.name]]</p>
                             </div>
-                            <div>
+                            <div class="modules-history-side">
                               <span v-if="item.installed" class="badge bg-success">{{ _('Installed')}}</span>
                               <span v-else>
                                 <a
@@ -733,7 +877,7 @@
                                   @click.stop.prevent="startUpgrade('?op=upgrade&name='+plugin.name+'&url='+plugin.html_url+'&commit='+item.sha, plugin.title || plugin.name)"
                                 ><i class="fa-solid fa-upload"></i> {{ _('Install')}}</a>
                               </span>
-                              <small class="opacity-50 text-nowrap">[[item.commit.author.date]]</small>
+                              <small class="opacity-50">[[item.commit.author.date]]</small>
                             </div>
                           </div>
                         </div>
