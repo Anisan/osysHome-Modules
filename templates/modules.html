@@ -375,6 +375,69 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.65; }
   }
+
+  .modules-operation-steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .modules-operation-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(var(--bs-secondary-rgb), 0.15);
+  }
+
+  .modules-operation-step:last-child {
+    border-bottom: 0;
+  }
+
+  .modules-operation-step-icon {
+    width: 1.25rem;
+    text-align: center;
+    flex-shrink: 0;
+    margin-top: 0.125rem;
+  }
+
+  .modules-operation-step-body {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .modules-operation-step-label {
+    font-weight: 500;
+  }
+
+  .modules-operation-step-message {
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+    word-break: break-word;
+  }
+
+  .modules-operation-batch {
+    max-height: min(55vh, calc(100vh - 16rem));
+    overflow-y: auto;
+  }
+
+  .modules-operation-batch-item + .modules-operation-batch-item {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(var(--bs-secondary-rgb), 0.2);
+  }
+
+  .modules-operation-batch-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    margin-bottom: 0.35rem;
+  }
+
+  #upgradeModal .modal-dialog.modal-batch {
+    max-width: 640px;
+  }
 </style>
 
 <div id="list_modules" class="modules-page" v-cloak>
@@ -409,6 +472,17 @@
         </span>
       </div>
     </div>
+  </div>
+
+  <div
+    v-if="githubStatusMessage"
+    class="alert py-2 mb-3"
+    :class="githubStatusAlertClass"
+    role="status"
+  >
+    <i class="fas fa-hourglass-half me-1" v-if="githubStatusKind === 'rate_limit_wait'"></i>
+    <i class="fas fa-triangle-exclamation me-1" v-else></i>
+    [[ githubStatusMessage ]]
   </div>
 
   <div v-if="loading" class="modules-loading-inline">
@@ -541,17 +615,17 @@
                   <template v-if="plugin.actions && plugin.actions.includes('cycle')">
                     <li><hr class="dropdown-divider"></li>
                     <li v-if="!plugin.alive">
-                      <button type="button" class="dropdown-item text-success" :disabled="upgradeInProgress" @click="startCycle(plugin)">
+                      <button type="button" class="dropdown-item text-success" :disabled="operationInProgress" @click="startCycle(plugin)">
                         <i class="fa-solid fa-play"></i>{{ _('Start cycle') }}
                       </button>
                     </li>
                     <li v-if="plugin.alive">
-                      <button type="button" class="dropdown-item text-danger" :disabled="upgradeInProgress" @click="stopCycle(plugin)">
+                      <button type="button" class="dropdown-item text-danger" :disabled="operationInProgress" @click="stopCycle(plugin)">
                         <i class="fa-solid fa-stop"></i>{{ _('Stop cycle') }}
                       </button>
                     </li>
                     <li v-if="plugin.alive">
-                      <button type="button" class="dropdown-item text-warning" :disabled="upgradeInProgress" @click="reloadCycle(plugin)">
+                      <button type="button" class="dropdown-item text-warning" :disabled="operationInProgress" @click="reloadCycle(plugin)">
                         <i class="fa-solid fa-refresh"></i>{{ _('Restart cycle') }}
                       </button>
                     </li>
@@ -566,6 +640,17 @@
                     <a class="dropdown-item" :href="docsUrl(plugin)" target="_blank">
                       <i class="fas fa-info-circle"></i>{{ _('Help') }}
                     </a>
+                  </li>
+                  <li v-if="!systemModules.includes(plugin.name)"><hr class="dropdown-divider"></li>
+                  <li v-if="!systemModules.includes(plugin.name)">
+                    <button
+                      type="button"
+                      class="dropdown-item text-danger"
+                      :disabled="operationInProgress"
+                      @click="confirmUninstall(plugin)"
+                    >
+                      <i class="fa-solid fa-trash"></i>{{ _('Uninstall') }}
+                    </button>
                   </li>
                 </ul>
               </div>
@@ -591,9 +676,9 @@
             type="button"
             class="btn btn-success"
             @click="upgradeAll"
-            :disabled="loading || upgradeInProgress"
+            :disabled="loading || operationInProgress"
           >
-            <span v-if="upgradeInProgress && upgradeAllMode" class="fas fa-rotate fa-spin me-2"></span>
+            <span v-if="operationInProgress && operationAllMode" class="fas fa-rotate fa-spin me-2"></span>
             <i v-else class="fa-solid fa-upload me-1"></i>{{ _('Update all') }}
           </button>
         </div>
@@ -629,7 +714,7 @@
                     <button
                       type="button"
                       class="dropdown-item text-success"
-                      :disabled="upgradeInProgress"
+                      :disabled="operationInProgress"
                       @click="startUpgrade('?op=upgrade_core', osyshome.name)"
                     >
                       <i class="fa-solid fa-upload"></i>{{ _('Upgrade') }}
@@ -683,7 +768,7 @@
                     <button
                       type="button"
                       class="dropdown-item text-success"
-                      :disabled="upgradeInProgress"
+                      :disabled="operationInProgress"
                       @click="startUpgrade('?op=upgrade&name='+plugin.name+'&url='+plugin.html_url, plugin.title || plugin.name)"
                     >
                       <i class="fa-solid fa-upload"></i>{{ _('Upgrade') }}
@@ -714,9 +799,10 @@
       <div v-if="loadingGithub" class="modules-loading-center">
         <span class="fas fa-rotate fa-spin fa-2x"></span>
         <span>{{ _('Loading...') }}</span>
+        <div v-if="githubStatusMessage" class="small mt-2 text-center px-3">[[ githubStatusMessage ]]</div>
       </div>
       <div v-else-if="githubError" class="alert alert-warning py-2 mb-3">
-        <i class="fas fa-triangle-exclamation me-1"></i>[[ githubError ]]
+        <i class="fas fa-triangle-exclamation me-1"></i>[[ githubErrorDisplay ]]
       </div>
       <div v-if="!githubError && !filteredPluginsGithub.length" class="modules-empty">
         <i class="fas fa-box-open fa-2x mb-2"></i>
@@ -751,9 +837,14 @@
                 </button>
                 <ul class="dropdown-menu dropdown-menu-end">
                   <li>
-                    <a class="dropdown-item text-success" :href="'?op=install&name='+plugin.shortName+'&author='+plugin.author">
+                    <button
+                      type="button"
+                      class="dropdown-item text-success"
+                      :disabled="operationInProgress"
+                      @click="startInstall(plugin)"
+                    >
                       <i class="fa-solid fa-download"></i>{{ _('Install') }}
-                    </a>
+                    </button>
                   </li>
                   <li>
                     <button type="button" class="dropdown-item" @click="openInfo(plugin.name, false)">
@@ -812,8 +903,8 @@
                         href="?op=upgrade_core"
                         @click.stop.prevent="startUpgrade('?op=upgrade_core', plugin.name)"
                       ><i class="fa-solid fa-upload"></i> {{ _('Upgrade')}}</a>
-                      <a v-if="'active' in plugin && !systemModules.includes(plugin.name)" class="btn btn-danger" :href="'?op=uninstall&name='+plugin.name" @click.stop onClick="return confirm('Uninstall module?')"><i class="fa-solid fa-trash"></i> {{ _('Uninstall')}}</a>
-                      <a v-if="!plugin.installed && plugin.name !='osysHome' && plugin.active === undefined" class="btn btn-success" :href="'?op=install&name='+plugin.shortName+'&author='+plugin.author" @click.stop><i class="fa-solid fa-upload"></i> {{ _('Install')}}</a>
+                      <a v-if="'active' in plugin && !systemModules.includes(plugin.name)" class="btn btn-danger" href="#" @click.stop.prevent="confirmUninstall(plugin)"><i class="fa-solid fa-trash"></i> {{ _('Uninstall')}}</a>
+                      <a v-if="!plugin.installed && plugin.name !='osysHome' && plugin.active === undefined" class="btn btn-success" href="#" @click.stop.prevent="startInstall(plugin)"><i class="fa-solid fa-upload"></i> {{ _('Install')}}</a>
                     </div>
                   </div>
                 </div>
@@ -955,49 +1046,120 @@
   </div>
 
   <div class="modal fade" id="upgradeModal" tabindex="-1" aria-labelledby="upgradeModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered" :class="{'modal-batch': operationAllMode}">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title" id="upgradeModalLabel">{{ _('Module update') }}</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ _('Close')}}"></button>
+          <h5 class="modal-title" id="upgradeModalLabel">[[ operationModalTitle ]]</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ _('Close')}}" :disabled="operationInProgress"></button>
         </div>
         <div class="modal-body">
-          <p class="fw-bold mb-2">[[ upgradeTitle ]]</p>
-          <div v-if="upgradeAllMode && upgradeInProgress" class="text-muted small mb-2">
-            [[ upgradeAllProgress.current ]] / [[ upgradeAllProgress.total ]]
+          <p class="fw-bold mb-2">[[ operationTitle ]]</p>
+          <div v-if="operationAllMode" class="text-muted small mb-3">
+            [[ operationAllProgress.current ]] / [[ operationAllProgress.total ]]
           </div>
-          <div v-if="upgradeInProgress" class="d-flex align-items-center">
-            <span class="fas fa-rotate fa-spin me-2"></span>
-            <span>{{ _('Updating module...') }}</span>
+
+          <div
+            v-if="githubStatusMessage && operationInProgress"
+            class="alert py-2 mb-3"
+            :class="githubStatusAlertClass"
+            role="status"
+          >
+            <i class="fas fa-hourglass-half me-1" v-if="githubStatusKind === 'rate_limit_wait'"></i>
+            <i class="fas fa-triangle-exclamation me-1" v-else></i>
+            [[ githubStatusMessage ]]
           </div>
-          <div v-else-if="upgradeAllMode">
-            <div v-if="upgradeAllProgress.failed.length" class="text-danger mb-2">
+
+          <div v-if="operationAllMode" class="modules-operation-batch mb-3">
+            <div
+              v-for="(batchItem, index) in operationBatchItems"
+              :key="'batch-' + index"
+              class="modules-operation-batch-item"
+            >
+              <div class="modules-operation-batch-title">
+                <span v-if="batchItem.status === 'running'"><i class="fas fa-rotate fa-spin text-primary"></i></span>
+                <span v-else-if="batchItem.status === 'done'"><i class="fa-solid fa-check text-success"></i></span>
+                <span v-else-if="batchItem.status === 'error'"><i class="fa-solid fa-circle-xmark text-danger"></i></span>
+                <span v-else><i class="fa-regular fa-circle text-muted"></i></span>
+                <span>[[ batchItem.title ]]</span>
+              </div>
+              <ul v-if="batchItem.steps.length" class="modules-operation-steps ms-4 mb-0">
+                <li
+                  v-for="step in batchItem.steps"
+                  :key="batchItem.title + '-' + step.id"
+                  class="modules-operation-step"
+                >
+                  <span class="modules-operation-step-icon">
+                    <i :class="operationStepIcon(step)"></i>
+                  </span>
+                  <div class="modules-operation-step-body">
+                    <div class="modules-operation-step-label">[[ operationStepLabel(step.id) ]]</div>
+                    <div
+                      v-if="operationStepMessageDisplay(step)"
+                      class="modules-operation-step-message"
+                      :class="step.status === 'error' ? 'text-danger' : 'text-muted'"
+                    >[[ operationStepMessageDisplay(step) ]]</div>
+                  </div>
+                </li>
+              </ul>
+              <div v-else-if="batchItem.status === 'pending'" class="text-muted small ms-4">{{ _('Waiting...') }}</div>
+              <div v-else-if="batchItem.error" class="text-danger small ms-4">[[ batchItem.error ]]</div>
+            </div>
+          </div>
+
+          <template v-else>
+            <ul v-if="operationSteps.length" class="modules-operation-steps mb-3">
+              <li
+                v-for="step in operationSteps"
+                :key="step.id"
+                class="modules-operation-step"
+              >
+                <span class="modules-operation-step-icon" :class="operationStepIconClass(step)">
+                  <i :class="operationStepIcon(step)"></i>
+                </span>
+                <div class="modules-operation-step-body">
+                  <div class="modules-operation-step-label">[[ operationStepLabel(step.id) ]]</div>
+                  <div
+                    v-if="operationStepMessageDisplay(step)"
+                    class="modules-operation-step-message"
+                    :class="step.status === 'error' ? 'text-danger' : 'text-muted'"
+                  >[[ operationStepMessageDisplay(step) ]]</div>
+                </div>
+              </li>
+            </ul>
+            <div v-else-if="operationInProgress" class="d-flex align-items-center">
+              <span class="fas fa-rotate fa-spin me-2"></span>
+              <span>{{ _('Preparing operation...') }}</span>
+            </div>
+          </template>
+
+          <div v-if="operationAllMode && !operationInProgress && operationDone">
+            <div v-if="operationAllProgress.failed.length" class="text-danger mb-2">
               <i class="fa-solid fa-triangle-exclamation me-1"></i>{{ _('Some updates failed') }}
               <ul class="small mb-0 mt-1 ps-3">
-                <li v-for="item in upgradeAllProgress.failed" :key="item.title">
+                <li v-for="item in operationAllProgress.failed" :key="item.title">
                   <b>[[ item.title ]]</b>: [[ item.message ]]
                 </li>
               </ul>
             </div>
-            <div v-if="upgradeAllProgress.succeeded" class="text-success">
-              <i class="fa-solid fa-check me-1"></i>{{ _('Updated successfully') }}: [[ upgradeAllProgress.succeeded ]]
+            <div v-if="operationAllProgress.succeeded" class="text-success">
+              <i class="fa-solid fa-check me-1"></i>{{ _('Updated successfully') }}: [[ operationAllProgress.succeeded ]]
             </div>
-            <div v-if="!upgradeAllProgress.failed.length" class="text-success mt-1">
+            <div v-if="!operationAllProgress.failed.length" class="text-success mt-1">
               <i class="fa-solid fa-check me-1"></i>{{ _('All updates completed successfully') }}
             </div>
           </div>
-          <div v-else>
-            <div v-if="upgradeError" class="text-danger">
-              <i class="fa-solid fa-triangle-exclamation me-1"></i>{{ _('Update failed') }}
-              <div class="small mt-1">[[ upgradeError ]]</div>
+          <div v-else-if="operationDone && !operationInProgress && !operationAllMode">
+            <div v-if="operationError" class="text-danger">
+              <i class="fa-solid fa-triangle-exclamation me-1"></i>{{ _('Operation failed') }}
+              <div class="small mt-1">[[ operationError ]]</div>
             </div>
-            <div v-else class="text-success d-flex align-items-center">
-              <i class="fa-solid fa-check me-1"></i>{{ _('Update completed successfully') }}
+            <div v-else-if="operationSuccess" class="text-success d-flex align-items-center">
+              <i class="fa-solid fa-check me-1"></i>{{ _('Operation completed successfully') }}
             </div>
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" :disabled="upgradeInProgress">{{ _('Close')}}</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" :disabled="operationInProgress">{{ _('Close')}}</button>
         </div>
       </div>
     </div>
@@ -1030,6 +1192,12 @@
         currentLang: '{{ current_language() }}',
         error: null,
         githubError: null,
+        githubStatusKind: null,
+        githubStatusWaitingSeconds: 0,
+        githubStatusTexts: {
+          wait: '{{ _("GitHub rate limit wait message") }}',
+          error: '{{ _("GitHub rate limit error message") }}',
+        },
         osyshome:null,
         name_info:null,
         commits:null,
@@ -1053,16 +1221,39 @@
           "level_logging": "None",
         },
         resultSave:"",
-        upgradeTitle: "",
-        upgradeStatus: "",
-        upgradeError: null,
-        upgradeInProgress: false,
-        upgradeAllMode: false,
-        upgradeAllProgress: {
+        operationModalTitle: '{{ _("Module update") }}',
+        operationTitle: "",
+        operationSteps: [],
+        operationError: null,
+        operationInProgress: false,
+        operationDone: false,
+        operationSuccess: false,
+        operationAllMode: false,
+        operationBatchItems: [],
+        operationAllProgress: {
           current: 0,
           total: 0,
           succeeded: 0,
           failed: [],
+        },
+        operationStepLabels: {
+          fetch_info: '{{ _("step.fetch_info") }}',
+          download: '{{ _("step.download") }}',
+          extract: '{{ _("step.extract") }}',
+          install_files: '{{ _("step.install_files") }}',
+          cleanup: '{{ _("step.cleanup") }}',
+          dependencies: '{{ _("step.dependencies") }}',
+          register: '{{ _("step.register") }}',
+          update_db: '{{ _("step.update_db") }}',
+          drop_tables: '{{ _("step.drop_tables") }}',
+          remove_files: '{{ _("step.remove_files") }}',
+          unregister: '{{ _("step.unregister") }}',
+        },
+        operationModalTitles: {
+          install: '{{ _("Module install") }}',
+          upgrade: '{{ _("Module update") }}',
+          upgrade_core: '{{ _("Module update") }}',
+          uninstall: '{{ _("Module uninstall") }}',
         },
       },
       async created() {
@@ -1094,6 +1285,7 @@
         }
       },
       beforeDestroy() {
+        this.stopGithubStatusPolling()
         const root = document.getElementById('list_modules')
         if (root) {
           if (this._onDropdownShow) {
@@ -1107,6 +1299,9 @@
       watch: {
         search(value) {
           localStorage.modules_filter = value;
+        },
+        operationInProgress(value) {
+          this.updateGithubStatusPolling()
         },
       },
       computed: {
@@ -1125,6 +1320,36 @@
             count += 1;
           }
           return count;
+        },
+        githubStatusAlertClass() {
+          if (this.githubStatusKind === 'rate_limit_error') {
+            return 'alert-warning'
+          }
+          if (this.githubStatusKind === 'rate_limit_wait') {
+            return 'alert-info'
+          }
+          return 'alert-secondary'
+        },
+        githubStatusMessage() {
+          if (this.githubStatusKind === 'rate_limit_wait') {
+            return this.githubStatusTexts.wait.replace(
+              '%(seconds)s',
+              String(this.githubStatusWaitingSeconds || 1),
+            )
+          }
+          if (this.githubStatusKind === 'rate_limit_error') {
+            return this.githubStatusTexts.error
+          }
+          return null
+        },
+        githubErrorDisplay() {
+          if (!this.githubError) {
+            return null
+          }
+          if (this.githubError.toLowerCase().includes('rate limit')) {
+            return this.githubStatusTexts.error
+          }
+          return this.githubError
         },
         filteredPlugins() {
           let data = this.plugins;
@@ -1287,6 +1512,7 @@
         async fetchGithub() {
           this.loadingGithub = true
           this.githubError = null
+          this.startGithubStatusPolling()
           try {
             const response = await axios.get('/api/Modules/github/catalog')
             if (!response.data.success) {
@@ -1298,6 +1524,12 @@
             this.pluginsGithub = response.data.available || []
             if (response.data.error) {
               this.githubError = response.data.error
+              if ((response.data.error || '').toLowerCase().includes('rate limit')) {
+                this.applyGithubStatus({
+                  message: response.data.error,
+                  kind: 'rate_limit_error',
+                })
+              }
             }
 
             const enrichments = response.data.enrichments || {}
@@ -1316,10 +1548,70 @@
             }
           } catch (error) {
             console.error(error)
-            this.githubError = error.response?.data?.message || error.message || 'GitHub catalog unavailable'
+            const message = error.response?.data?.message || error.message || 'GitHub catalog unavailable'
+            this.githubError = message
+            if (message.toLowerCase().includes('rate limit')) {
+              this.applyGithubStatus({ message: message, kind: 'rate_limit_error' })
+            }
             this.pluginsGithub = []
           } finally {
             this.loadingGithub = false
+            this.stopGithubStatusPolling()
+            await this.fetchGithubStatus(true)
+          }
+        },
+        applyGithubStatus(status) {
+          if (status && (status.kind || status.message)) {
+            this.githubStatusKind = status.kind || (
+              status.message && status.message.toLowerCase().includes('rate limit')
+                ? 'rate_limit_error'
+                : null
+            )
+            this.githubStatusWaitingSeconds = status.waiting_seconds || 0
+            return
+          }
+          if (!this.loadingGithub && !this.operationInProgress) {
+            this.githubStatusKind = null
+            this.githubStatusWaitingSeconds = 0
+          }
+        },
+        operationStepMessageDisplay(step) {
+          if (step.status === 'running' && this.githubStatusKind === 'rate_limit_wait' && this.githubStatusMessage) {
+            return this.githubStatusMessage
+          }
+          return step.message || null
+        },
+        async fetchGithubStatus(clearIfEmpty) {
+          try {
+            const response = await axios.get('/api/Modules/github/status')
+            if (response.data.success && response.data.message) {
+              this.applyGithubStatus(response.data)
+            } else if (clearIfEmpty) {
+              this.applyGithubStatus(null)
+            }
+          } catch (error) {
+            console.error(error)
+          }
+        },
+        startGithubStatusPolling() {
+          this.stopGithubStatusPolling()
+          this.fetchGithubStatus()
+          this._githubStatusTimer = setInterval(() => {
+            this.fetchGithubStatus()
+          }, 1000)
+        },
+        stopGithubStatusPolling() {
+          if (this._githubStatusTimer) {
+            clearInterval(this._githubStatusTimer)
+            this._githubStatusTimer = null
+          }
+        },
+        updateGithubStatusPolling() {
+          if (this.operationInProgress) {
+            this.startGithubStatusPolling()
+          } else if (!this.loadingGithub) {
+            this.stopGithubStatusPolling()
+            this.fetchGithubStatus(true)
           }
         },
         async startCycle(plugin){
@@ -1535,47 +1827,130 @@
               continue
             }
             items.push({
-              url: '?op=upgrade&name=' + encodeURIComponent(plugin.name) + '&url=' + encodeURIComponent(plugin.html_url || ''),
+              payload: {
+                op: 'upgrade',
+                name: plugin.name,
+                url: plugin.html_url || plugin.url || '',
+                title: plugin.title || plugin.name,
+              },
               title: plugin.title || plugin.name,
             })
           }
           if (this.osyshome && this.osyshome.update) {
             items.push({
-              url: '?op=upgrade_core',
+              payload: {
+                op: 'upgrade_core',
+                title: this.osyshome.name || 'osysHome',
+              },
               title: this.osyshome.name || 'osysHome',
             })
           }
           return items
         },
-        async runUpgradeRequest(url) {
-          const response = await axios.get(url + (url.includes('?') ? '&' : '?') + 'ajax=1')
-          if (response.data && response.data.status === 'ok') {
-            return { success: true }
+        parseUpgradeUrl(url) {
+          const query = (url || '').replace(/^\?/, '')
+          const params = new URLSearchParams(query)
+          const op = params.get('op')
+          if (op === 'upgrade_core') {
+            return {
+              op: 'upgrade_core',
+              commit: params.get('commit') || undefined,
+            }
           }
-          const message = (response.data && response.data.message) || response.statusText || 'HTTP error'
-          return { success: false, message }
+          return {
+            op: 'upgrade',
+            name: params.get('name') || undefined,
+            url: params.get('url') || undefined,
+            commit: params.get('commit') || undefined,
+          }
         },
-        async startUpgrade(url, title) {
+        operationStepLabel(stepId) {
+          return this.operationStepLabels[stepId] || stepId
+        },
+        operationStepIcon(step) {
+          if (step.status === 'done') {
+            return 'fa-solid fa-check text-success'
+          }
+          if (step.status === 'error') {
+            return 'fa-solid fa-circle-xmark text-danger'
+          }
+          if (step.status === 'running') {
+            return 'fas fa-rotate fa-spin text-primary'
+          }
+          return 'fa-regular fa-circle text-muted'
+        },
+        operationStepIconClass(step) {
+          return ''
+        },
+        resetOperationState() {
+          this.operationError = null
+          this.operationDone = false
+          this.operationSuccess = false
+          this.operationSteps = []
+        },
+        syncOperationSteps(steps, target) {
+          const nextSteps = (steps || []).map(step => ({ ...step }))
+          if (target) {
+            Vue.set(target, 'steps', nextSteps)
+          }
+          this.operationSteps = nextSteps
+        },
+        async pollOperationJob(jobId, onStepsUpdate) {
+          while (true) {
+            const response = await axios.get('/api/Modules/operations/' + jobId)
+            if (!response.data.success) {
+              throw new Error(response.data.message || 'Operation status unavailable')
+            }
+            const steps = response.data.steps || []
+            if (response.data.github_status) {
+              this.applyGithubStatus(response.data.github_status)
+            }
+            if (onStepsUpdate) {
+              onStepsUpdate(steps)
+            } else {
+              this.operationSteps = steps
+            }
+            if (response.data.done) {
+              this.operationSuccess = !!response.data.operation_success
+              this.operationError = response.data.error || null
+              return {
+                success: !!response.data.operation_success,
+                error: response.data.error || null,
+                steps: steps,
+              }
+            }
+            await new Promise(resolve => setTimeout(resolve, 400))
+          }
+        },
+        async runOperation(payload, onStepsUpdate) {
+          const response = await axios.post('/api/Modules/operations', payload)
+          if (!response.data.success || !response.data.job_id) {
+            throw new Error(response.data.message || 'Failed to start operation')
+          }
+          return this.pollOperationJob(response.data.job_id, onStepsUpdate)
+        },
+        async startOperation(op, payload, title) {
           this.closeOpenMenus()
-          this.upgradeAllMode = false
-          this.upgradeTitle = title
-          this.upgradeStatus = ""
-          this.upgradeError = null
-          this.upgradeInProgress = true
+          this.operationAllMode = false
+          this.operationBatchItems = []
+          this.operationModalTitle = this.operationModalTitles[op] || '{{ _("Module update") }}'
+          this.operationTitle = title || payload.title || payload.name || ''
+          this.resetOperationState()
+          this.operationInProgress = true
+          this.startGithubStatusPolling()
           $('#upgradeModal').modal('show')
           let success = false
           try {
-            const result = await this.runUpgradeRequest(url)
-            if (result.success) {
-              success = true
-            } else {
-              this.upgradeError = result.message
-            }
+            const result = await this.runOperation({ op, ...payload, title: this.operationTitle })
+            success = !!result.success
           } catch (error) {
             console.error(error)
-            this.upgradeError = error.response?.data?.message || error.message
+            this.operationError = error.response?.data?.message || error.message || 'Error'
           } finally {
-            this.upgradeInProgress = false
+            this.operationInProgress = false
+            this.operationDone = true
+            this.stopGithubStatusPolling()
+            await this.fetchGithubStatus(true)
             await this.fetchData()
             if (success) {
               setTimeout(() => {
@@ -1584,51 +1959,100 @@
             }
           }
         },
+        startInstall(plugin) {
+          const name = plugin.shortName || plugin.name
+          this.startOperation('install', {
+            name: name,
+            author: plugin.author,
+            title: name,
+          }, name)
+        },
+        confirmUninstall(plugin) {
+          const title = plugin.title || plugin.name
+          if (!confirm('{{ _("Uninstall module?") }}')) {
+            return
+          }
+          this.startOperation('uninstall', {
+            name: plugin.name,
+            title: title,
+          }, title)
+        },
+        async startUpgrade(url, title) {
+          const parsed = this.parseUpgradeUrl(url)
+          await this.startOperation(parsed.op, parsed, title)
+        },
         async upgradeAll() {
           const items = this.buildPendingUpgrades()
           if (!items.length) {
             return
           }
 
-          this.upgradeAllMode = true
-          this.upgradeTitle = '{{ _("Update all") }}'
-          this.upgradeError = null
-          this.upgradeInProgress = true
-          this.upgradeAllProgress = {
+          this.operationAllMode = true
+          this.operationModalTitle = '{{ _("Module update") }}'
+          this.operationTitle = '{{ _("Update all") }}'
+          this.operationError = null
+          this.operationDone = false
+          this.operationSuccess = false
+          this.operationSteps = []
+          this.operationBatchItems = items.map(item => ({
+            title: item.title,
+            status: 'pending',
+            success: false,
+            steps: [],
+            error: null,
+          }))
+          this.operationInProgress = true
+          this.operationAllProgress = {
             current: 0,
             total: items.length,
             succeeded: 0,
             failed: [],
           }
+          this.startGithubStatusPolling()
           $('#upgradeModal').modal('show')
 
           for (let i = 0; i < items.length; i++) {
             const item = items[i]
-            this.upgradeTitle = item.title
-            this.upgradeAllProgress.current = i + 1
+            const batchItem = this.operationBatchItems[i]
+            batchItem.status = 'running'
+            this.operationTitle = item.title
+            this.operationAllProgress.current = i + 1
             try {
-              const result = await this.runUpgradeRequest(item.url)
-              if (result.success) {
-                this.upgradeAllProgress.succeeded += 1
-              } else {
-                this.upgradeAllProgress.failed.push({
+              const result = await this.runOperation(item.payload, (steps) => {
+                this.syncOperationSteps(steps, batchItem)
+              })
+              this.syncOperationSteps(result.steps, batchItem)
+              batchItem.success = result.success
+              batchItem.status = result.success ? 'done' : 'error'
+              if (!result.success) {
+                batchItem.error = result.error || '{{ _("Operation failed") }}'
+                this.operationAllProgress.failed.push({
                   title: item.title,
-                  message: result.message,
+                  message: batchItem.error,
                 })
+              } else {
+                this.operationAllProgress.succeeded += 1
               }
             } catch (error) {
               console.error(error)
-              this.upgradeAllProgress.failed.push({
+              const message = error.response?.data?.message || error.message || 'Error'
+              batchItem.status = 'error'
+              batchItem.error = message
+              this.operationAllProgress.failed.push({
                 title: item.title,
-                message: error.response?.data?.message || error.message || 'Error',
+                message: message,
               })
             }
           }
 
-          this.upgradeInProgress = false
+          this.operationInProgress = false
+          this.operationDone = true
+          this.operationSuccess = !this.operationAllProgress.failed.length
+          this.stopGithubStatusPolling()
+          await this.fetchGithubStatus(true)
           await this.fetchData()
 
-          if (!this.upgradeAllProgress.failed.length) {
+          if (!this.operationAllProgress.failed.length) {
             setTimeout(() => {
               $('#upgradeModal').modal('hide')
             }, 2000)
