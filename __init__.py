@@ -19,7 +19,14 @@ from app.core.main.BasePlugin import BasePlugin
 from app.core.main.PluginsHelper import plugins
 from app.core.models.Plugins import Plugin
 from app.authentication.handlers import handle_admin_required
-from app.database import db, session_scope, get_now_to_utc, convert_utc_to_local, row2dict
+from app.database import (
+    db,
+    session_scope,
+    get_now_to_utc,
+    convert_utc_to_local,
+    convert_local_to_utc,
+    row2dict,
+)
 from app.core.lib.common import addNotify, CategoryNotify
 from app.core.lib.object import setProperty, getProperty
 from plugins.Modules.forms.SettingForms import SettingsForm
@@ -1092,7 +1099,7 @@ class Modules(BasePlugin):
             content['update'] = res
         return render_template("widget_modules.html",**content)
 
-    def check_for_new_commits(self, repo_owner, repo_name, last_known_date, branch=None, github_token=None):
+    def check_for_new_commits(self, repo_owner, repo_name, last_known_date, branch=None, github_token=None, assume_local_naive=False):
         """
         Проверяет наличие новых коммитов в указанном репозитории GitHub
 
@@ -1106,13 +1113,18 @@ class Modules(BasePlugin):
         Returns:
             tuple: (has_new_commits: bool, latest_commit_date: str, error_message: str)
         """
-        # Преобразуем входную дату в timezone-aware datetime
+        # Преобразуем входную дату в timezone-aware datetime (UTC)
         try:
             if isinstance(last_known_date, str):
                 last_known_date = datetime.datetime.fromisoformat(last_known_date.replace('Z', '+00:00'))
 
             if last_known_date.tzinfo is None:
-                last_known_date = last_known_date.replace(tzinfo=datetime.timezone.utc)
+                # For core we store local naive datetime (convert_utc_to_local),
+                # so convert to UTC before comparing with GitHub's UTC timestamps.
+                if assume_local_naive:
+                    last_known_date = convert_local_to_utc(last_known_date).replace(tzinfo=datetime.timezone.utc)
+                else:
+                    last_known_date = last_known_date.replace(tzinfo=datetime.timezone.utc)
         except (ValueError, AttributeError) as e:
             self.logger.error(f"Invalid date format: {e}")
             return False, None
@@ -1179,7 +1191,7 @@ class Modules(BasePlugin):
             if latest_commit_date.tzinfo is None:
                 latest_commit_date = latest_commit_date.replace(tzinfo=datetime.timezone.utc)
 
-            # Сравниваем даты
+            # Сравниваем даты (both UTC-aware)
             if latest_commit_date > last_known_date:
                 return True, latest_commit_date.isoformat()
             return False, latest_commit_date.isoformat()
@@ -1217,6 +1229,7 @@ class Modules(BasePlugin):
                     last_known_date=last_known,
                     branch=branch,
                     github_token=self.config.get('token',None),
+                    assume_local_naive=True,
                 )
                 if has_new:
                     setProperty("SystemVar.update", True, self.name)

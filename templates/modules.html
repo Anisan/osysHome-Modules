@@ -911,8 +911,8 @@
                 <div class="modal-body">
                   <ul class="nav nav-tabs mb-3" id="configTabs" role="tablist">
                     <li class="nav-item"><a class="nav-link tab-button active" id="readme-tab" href="#readme-pane" data-bs-toggle="tab" role="tab">{{ _('README') }}</a></li>
-                    <li v-if="plugin" class="nav-item"><a class="nav-link tab-button" id="history-tab" href="#history" data-bs-toggle="tab" role="tab">{{ _('History')}} ([[ plugin.branch || '—' ]])</a></li>
-                    <li v-if="name_info != 'osyshome' && (settings || settingsLoading)" class="nav-item"><a class="nav-link tab-button" href="#settings" data-bs-toggle="tab" role="tab">{{ _('Settings')}}</a></li>
+                    <li v-if="plugin" class="nav-item"><a class="nav-link tab-button" id="history-tab" href="#history" data-bs-toggle="tab" role="tab">{{ _('History')}} ([[ coreBranchLabel ]])</a></li>
+                    <li class="nav-item"><a class="nav-link tab-button" id="module-settings-tab" href="#module-settings-pane" data-bs-toggle="tab" role="tab" aria-controls="module-settings-pane" aria-selected="false">{{ _('Settings')}}</a></li>
                   </ul>
                   <div class="tab-content" id="myTabContent">
                     <div class="tab-pane fade show active" id="readme-pane" role="tabpanel" aria-labelledby="readme-tab">
@@ -974,66 +974,100 @@
                         </div>
                       </div>
                     </div>
-                    <div v-if="name_info != 'osyshome' && (settings || settingsLoading)" class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
-                      <div v-if="settingsLoading" class="modules-loading-center">
-                        <span class="fas fa-rotate fa-spin fa-2x"></span>
-                        <span>{{ _('Loading...') }}</span>
-                      </div>
-                      <div v-else>
-                      <div class="form-check">
-                        <input class="form-check-input" type="checkbox" v-model="settings.active" id="flexCheckDefault">
-                        <label class="form-check-label" for="flexCheckDefault">
-                          {{ _('Active')}}
-                        </label>
-                      </div>
+                    <div class="tab-pane fade" id="module-settings-pane" role="tabpanel" aria-labelledby="module-settings-tab">
                       <div>
-                        <label class="form-check-label" for="flexCheckDefault">
-                          {{ _('Title')}}
-                        </label>
-                        <input type="text" class="form-control" v-model="settings.title">
-                      </div>
-                      <div class="mb-2">
-                        <label class="form-check-label" for="flexCheckDefault">
-                          {{ _('Category')}}
-                        </label>
-                        <input type="text" class="form-control" v-model="settings.category">
-                      </div>
-                      <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" v-model="settings.hidden" id="flexCheckDefault">
-                        <label class="form-check-label" for="flexCheckDefault">
-                          {{ _('Hidden in statusbar')}}
-                        </label>
-                      </div>
-                      <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" v-model="settings.hidden_widget" id="flexCheckDefault">
-                        <label class="form-check-label" for="flexCheckDefault">
-                          {{ _('Hide widget in control panel')}}
-                        </label>
-                      </div>
-                      <div>
-                        <label class="form-check-label" for="flexCheckDefault">
-                          {{ _('Url repository for update')}}
-                        </label>
-                        <input type="text" class="form-control" v-model="settings.url">
-                      </div>
-                      <div>
-                        <label class="form-label">
-                          {{ _('Branch repository for update')}}
-                        </label>
-                        <select class="form-select" aria-label="Select branch" v-model="settings.branch" >
-                          <option v-for="item in branches" :value="item.name">[[item.name]]</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label class="form-check-label" for="flexCheckDefault">
-                          {{ _('Logging level')}}
-                        </label>
-                        <select class="form-select" aria-label="Select level" v-model="settings.level_logging" >
-                          <option v-for="level in levels" :value="level.value">[[level.title]]</option>
-                        </select>
-                      </div>
-                      <button type="button" class="btn btn-success mt-3" @click.stop="saveSettings">{{ _('Save')}}</button>
-                      [[resultSave]]
+                        <div v-if="((name_info || '').toLowerCase() === 'osyshome') || (plugin && (plugin.name || '').toLowerCase() === 'osyshome')">
+                          <div class="mb-2">
+                            <label class="form-label">{{ _('Branch repository for update')}}</label>
+                            <select
+                              class="form-select"
+                              aria-label="Select branch"
+                              v-model="settings.branch"
+                            >
+                              <option
+                                v-if="settings.branch && (!branches || !branches.some(b => b.name === settings.branch))"
+                                :value="settings.branch"
+                              >
+                                [[ settings.branch ]]
+                              </option>
+                              <option v-for="item in branches" :key="item.name" :value="item.name">[[item.name]]</option>
+                            </select>
+                            <div class="form-text" v-if="branchLoading">{{ _('Loading...') }}</div>
+                            <div class="form-text text-warning" v-else-if="branchError">[[ branchError ]]</div>
+                            <div class="form-text text-warning" v-if="branchError && branchError.toLowerCase().includes('rate limit')">[[ githubRateLimitHint ]]</div>
+                          </div>
+                          <button type="button" class="btn btn-success mt-2" @click.stop="saveSettingsCore">{{ _('Save')}}</button>
+                          [[resultSave]]
+                        </div>
+
+                        <div v-if="!(((name_info || '').toLowerCase() === 'osyshome') || (plugin && (plugin.name || '').toLowerCase() === 'osyshome')) && settings">
+                          <div class="form-check">
+                            <input class="form-check-input" type="checkbox" v-model="settings.active" id="flexCheckDefault">
+                            <label class="form-check-label" for="flexCheckDefault">
+                              {{ _('Active')}}
+                            </label>
+                          </div>
+                          <div>
+                            <label class="form-check-label" for="flexCheckDefault">
+                              {{ _('Title')}}
+                            </label>
+                            <input type="text" class="form-control" v-model="settings.title">
+                          </div>
+                          <div class="mb-2">
+                            <label class="form-check-label" for="flexCheckDefault">
+                              {{ _('Category')}}
+                            </label>
+                            <input type="text" class="form-control" v-model="settings.category">
+                          </div>
+                          <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" v-model="settings.hidden" id="flexCheckDefault">
+                            <label class="form-check-label" for="flexCheckDefault">
+                              {{ _('Hidden in statusbar')}}
+                            </label>
+                          </div>
+                          <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" v-model="settings.hidden_widget" id="flexCheckDefault">
+                            <label class="form-check-label" for="flexCheckDefault">
+                              {{ _('Hide widget in control panel')}}
+                            </label>
+                          </div>
+                          <div>
+                            <label class="form-check-label" for="flexCheckDefault">
+                              {{ _('Url repository for update')}}
+                            </label>
+                            <input type="text" class="form-control" v-model="settings.url">
+                          </div>
+                          <div>
+                            <label class="form-label">{{ _('Branch repository for update')}}</label>
+                            <select
+                              class="form-select"
+                              aria-label="Select branch"
+                              :value="(settings && settings.branch) || 'master'"
+                              @change="settings.branch = $event.target.value"
+                            >
+                              <option
+                                v-if="!branches || !branches.length"
+                                :value="(settings && settings.branch) || 'master'"
+                              >
+                                [[ (settings && settings.branch) || 'master' ]]
+                              </option>
+                              <option v-for="item in branches" :value="item.name">[[item.name]]</option>
+                            </select>
+                            <div class="form-text" v-if="branchLoading">{{ _('Loading...') }}</div>
+                            <div class="form-text text-warning" v-else-if="branchError">[[ branchError ]]</div>
+                            <div class="form-text text-warning" v-if="branchError && branchError.toLowerCase().includes('rate limit')">[[ githubRateLimitHint ]]</div>
+                          </div>
+                          <div>
+                            <label class="form-check-label" for="flexCheckDefault">
+                              {{ _('Logging level')}}
+                            </label>
+                            <select class="form-select" aria-label="Select level" v-model="settings.level_logging" >
+                              <option v-for="level in levels" :value="level.value">[[level.title]]</option>
+                            </select>
+                          </div>
+                          <button type="button" class="btn btn-success mt-3" @click.stop="saveSettings">{{ _('Save')}}</button>
+                          [[resultSave]]
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1182,9 +1216,11 @@
         loadingPlugins: false,
         loadingGithub: false,
         historyLoading: false,
+        branchLoading: false,
         settingsLoading: false,
         readmeLoading: false,
         historyError: null,
+        branchError: null,
         readmeError: null,
         readmeContent: null,
         infoInstalled: false,
@@ -1198,10 +1234,11 @@
           wait: '{{ _("GitHub rate limit wait message") }}',
           error: '{{ _("GitHub rate limit error message") }}',
         },
+        githubRateLimitHint: '{{ _("Add a GitHub token in Modules settings to increase the limit.") }}',
         osyshome:null,
         name_info:null,
         commits:null,
-        settings:null,
+        settings:{ branch: 'master' },
         branches:null,
         levels:[ 
           {"value": "None", "title":"Default"},
@@ -1351,6 +1388,15 @@
           }
           return this.githubError
         },
+        isCoreInfo() {
+          return this.isCoreName(this.name_info)
+        },
+        coreBranchLabel() {
+          if (!this.isCoreInfo) {
+            return (this.plugin && this.plugin.branch) || '—'
+          }
+          return (this.settings && this.settings.branch) || (this.plugin && this.plugin.branch) || 'master'
+        },
         filteredPlugins() {
           let data = this.plugins;
           if (this.search) {
@@ -1386,6 +1432,9 @@
         },
       },
       methods: {
+        isCoreName(name) {
+          return String(name || '').toLowerCase() === 'osyshome'
+        },
         closeOpenMenus() {
           const root = document.getElementById('list_modules')
           if (!root) {
@@ -1441,7 +1490,7 @@
           if (!item) {
             return ''
           }
-          if (item.name === 'osysHome' || this.name_info === 'osyshome') {
+          if (item.name === 'osysHome' || this.isCoreInfo) {
             return 'core'
           }
           if (item.shortName) {
@@ -1460,18 +1509,32 @@
           return '/docs/?category=' + encodeURIComponent(category)
         },
         async fetchBranches(plugin){
+          this.branchLoading = true
+          this.branchError = null
           try {
             const response = await axios.get('/api/Modules/github/branches', {
               params: this.githubRepoParams(plugin),
             })
             if (!response.data.success) {
               this.branches = []
+              const message = response.data.message || 'GitHub API unavailable'
+              this.branchError = message
+              if (message.toLowerCase().includes('rate limit')) {
+                this.applyGithubStatus({ message: message, kind: 'rate_limit_error' })
+              }
               return
             }
             this.branches = response.data.result
           } catch (error) {
             console.error(error)
             this.branches = []
+            const message = error.response?.data?.message || error.message || 'GitHub API unavailable'
+            this.branchError = message
+            if (message.toLowerCase().includes('rate limit')) {
+              this.applyGithubStatus({ message: message, kind: 'rate_limit_error' })
+            }
+          } finally {
+            this.branchLoading = false
           }
         },
         async fetchCommits(plugin) {
@@ -1481,18 +1544,31 @@
               ...this.githubRepoParams(plugin),
               per_page: 15,
             }
-            if (plugin.branch) {
-              params.branch = plugin.branch
+            const branch = this.isCoreInfo
+              ? ((this.settings && this.settings.branch) || (plugin && plugin.branch))
+              : (plugin && plugin.branch)
+            if (branch) {
+              params.branch = branch
             }
             const response = await axios.get('/api/Modules/github/commits', { params })
             if (!response.data.success) {
               this.commits = []
               this.historyError = response.data.message || 'GitHub API unavailable'
+              const message = this.historyError || ''
+              if (String(message).toLowerCase().includes('rate limit')) {
+                this.applyGithubStatus({ message: message, kind: 'rate_limit_error' })
+              }
               return
             }
             var commits = response.data.result
+            if (typeof commits === 'string' && commits.trim().startsWith('<!DOCTYPE html')) {
+              this.commits = []
+              this.historyError = 'GitHub returned HTML instead of commits JSON (check token/rate limit).'
+              return
+            }
             if (!Array.isArray(commits))
               commits = [commits]
+            commits = commits.filter(item => item && item.commit && item.commit.author)
             if (plugin.updated){
               for (var element of commits) {
                 if (Date.parse(plugin.updated) >= Date.parse(element.commit.author.date)){
@@ -1507,6 +1583,10 @@
             console.error(error)
             this.commits = []
             this.historyError = error.response?.data?.message || error.message || 'GitHub API unavailable'
+            const message = this.historyError || ''
+            if (String(message).toLowerCase().includes('rate limit')) {
+              this.applyGithubStatus({ message: message, kind: 'rate_limit_error' })
+            }
           }
         },
         async fetchGithub() {
@@ -1543,7 +1623,13 @@
 
             const osysMeta = response.data.osyshome_enrichment
             if (osysMeta && this.osyshome) {
-              Object.keys(osysMeta).forEach(key => Vue.set(this.osyshome, key, osysMeta[key]))
+              Object.keys(osysMeta).forEach(key => {
+                // branch comes from SystemVar.core_branch (/api/plugins), not GitHub default_branch
+                if (key === 'branch') {
+                  return
+                }
+                Vue.set(this.osyshome, key, osysMeta[key])
+              })
               Vue.set(this.osyshome, 'image', "{{ config.ASSETS_ROOT }}/images/logo-dark.png")
             }
           } catch (error) {
@@ -1719,7 +1805,7 @@
         async openInfo(name, installed){
           this.closeOpenMenus()
           this.name_info = name
-          if (name != 'osyshome'){
+          if (!this.isCoreName(name)){
             this.plugin = this.plugins.find(p => p.name === name);
             if (this.plugin == null)
               this.plugin = this.pluginsGithub.find(p => p.name === name);
@@ -1728,15 +1814,19 @@
             this.plugin = this.osyshome
           this.commits = null
           this.branches = null
+          this.branchError = null
           this.historyError = null
           this.historyLoading = true
-          this.settingsLoading = installed && name != 'osyshome'
+          this.settingsLoading = false
           this.infoInstalled = installed
           this.readmeContent = null
           this.readmeError = null
           this.readmeLoading = false
           this.readmeLoadedFor = null
-          this.settings = null
+          this.settings = { branch: 'master' }
+          if (this.isCoreName(name)) {
+            await this.fetchCoreBranchValue()
+          }
           $('#readme-tab').tab('show');
           $('#infoModal').modal('show')
 
@@ -1745,7 +1835,7 @@
             this.fetchCommits(this.plugin),
             this.fetchReadme(),
           ]
-          if (installed && name != 'osyshome') {
+          if (installed && !this.isCoreName(name)) {
             tasks.push(this.fetchSettings(this.plugin.name))
           }
 
@@ -1753,9 +1843,7 @@
             await Promise.all(tasks)
           } finally {
             this.historyLoading = false
-            if (installed) {
-              this.settingsLoading = false
-            }
+            this.settingsLoading = false
           }
         },
         loadReadme() {
@@ -1775,7 +1863,7 @@
           this.readmeLoading = true
           this.readmeError = null
           this.readmeContent = null
-          const moduleName = this.name_info === 'osyshome' ? 'osysHome' : this.plugin.name
+          const moduleName = this.isCoreInfo ? 'osysHome' : this.plugin.name
           try {
             const params = {
               installed: this.infoInstalled ? '1' : '0',
@@ -1783,8 +1871,11 @@
               lang: this.currentLang,
               ...this.githubRepoParams(this.plugin),
             }
-            if (this.plugin.branch) {
-              params.branch = this.plugin.branch
+            const readmeBranch = this.isCoreInfo
+              ? ((this.settings && this.settings.branch) || (this.plugin && this.plugin.branch))
+              : (this.plugin && this.plugin.branch)
+            if (readmeBranch) {
+              params.branch = readmeBranch
             }
             const response = await axios.get('/api/Modules/readme', { params })
             if (!response.data.success) {
@@ -1805,6 +1896,38 @@
           if (response.status == 200)
             this.settings = { ...this.def_settings, ...response.data}
         },
+        parsePropertyApiResult(result) {
+          if (result === null || result === undefined) {
+            return ''
+          }
+          if (typeof result === 'object' && result.value !== undefined) {
+            return String(result.value).trim()
+          }
+          return String(result).trim()
+        },
+        async fetchCoreBranchValue() {
+          try {
+            const response = await axios.get('/api/property/SystemVar.core_branch')
+            if (response.data && response.data.success) {
+              const branch = this.parsePropertyApiResult(response.data.result) || 'master'
+              if (!this.settings) {
+                Vue.set(this, 'settings', { branch: branch })
+              } else {
+                Vue.set(this.settings, 'branch', branch)
+              }
+              if (this.osyshome) {
+                Vue.set(this.osyshome, 'branch', branch)
+              }
+              if (this.plugin && this.isCoreInfo) {
+                Vue.set(this.plugin, 'branch', branch)
+              }
+              return branch
+            }
+          } catch (error) {
+            console.error(error)
+          }
+          return (this.settings && this.settings.branch) || (this.plugin && this.plugin.branch) || 'master'
+        },
         async saveSettings(){
           const response = await axios.post("/api/plugins/"+this.plugin.name+"/settings", this.settings)
           this.resultSave = "Result: " + response.data.message
@@ -1813,9 +1936,36 @@
           }, 5000);
         },
         async saveSettingsCore(){
-          const response = await axios.post("/api/property/SystemVar.core_branch", this.settings.branch, {headers: { 'Content-Type' : 'text/plain' }})
-          this.resultSave = "Result: " + response.data.success
-          this.osyshome.branch = this.settings.branch
+          const coreBranch = (this.settings && this.settings.branch) ? this.settings.branch : 'master'
+          try {
+            const response = await axios.post(
+              "/api/property/SystemVar.core_branch",
+              { data: coreBranch, source: 'Modules' },
+              { headers: { 'Content-Type': 'application/json' } }
+            )
+            this.resultSave = "Result: " + response.data.success
+            Vue.set(this.settings, 'branch', coreBranch)
+            if (this.osyshome) {
+              Vue.set(this.osyshome, 'branch', coreBranch)
+            }
+            if (this.plugin && this.isCoreInfo) {
+              Vue.set(this.plugin, 'branch', coreBranch)
+              this.historyLoading = true
+              try {
+                await Promise.all([
+                  this.fetchCommits(this.plugin),
+                  this.fetchReadme(),
+                ])
+              } finally {
+                this.historyLoading = false
+              }
+            }
+            await this.fetchPlugins()
+            await this.fetchCoreBranchValue()
+          } catch (error) {
+            console.error(error)
+            this.resultSave = "Result: " + (error.response?.data?.error || error.response?.data?.message || error.message || 'error')
+          }
           setTimeout(() => {
             this.resultSave = null;
           }, 5000);
