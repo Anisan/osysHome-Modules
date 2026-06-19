@@ -666,6 +666,26 @@ class Modules(BasePlugin):
             return stored
         return default
 
+    def _wait_interruptible(self, timeout):
+        """Wait up to *timeout* seconds; return True if stop was requested."""
+        event = self.event
+        if event is not None:
+            return event.wait(timeout)
+        time.sleep(timeout)
+        return False
+
+    def stop_cycle(self):
+        """Stop cycle with timeout to avoid blocking on GitHub rate-limit waits."""
+        self.logger.info("Stopping cycle...")
+        if self.event:
+            self.event.set()
+        if self.thread:
+            self.thread.join(timeout=5.0)
+            if self.thread.is_alive():
+                self.logger.warning("Cycle thread did not stop within timeout")
+            self.thread = None
+        self.logger.info("Stopped cycle")
+
     def _github_rate_limit_wait(self, response):
         reset_time = response.headers.get('X-RateLimit-Reset')
         if reset_time:
@@ -689,7 +709,8 @@ class Modules(BasePlugin):
                 waiting_seconds=remaining,
             )
             sleep_chunk = min(1, remaining)
-            time.sleep(sleep_chunk)
+            if self._wait_interruptible(sleep_chunk):
+                return False
             remaining -= sleep_chunk
         return True
 
@@ -1161,9 +1182,9 @@ class Modules(BasePlugin):
                 reset_time = rate_data['resources']['core']['reset']
 
                 if remaining < 5:
-                    wait_time = reset_time - time.time() + 10  # Добавляем 10 секунд буфера
-                    if wait_time > 0:
-                        time.sleep(wait_time)
+                    wait_time = min(max(reset_time - time.time() + 10, 0), 300)
+                    if wait_time > 0 and self._wait_interruptible(wait_time):
+                        return False, None
 
             # Основной запрос
             response = requests.get(url, headers=headers, timeout=Config.HTTP_REQUEST_TIMEOUT)
@@ -1171,9 +1192,9 @@ class Modules(BasePlugin):
             # Обрабатываем возможные ошибки
             if response.status_code == 403 and 'rate limit exceeded' in response.text.lower():
                 reset_time = int(response.headers.get('X-RateLimit-Reset', time.time() + 60))
-                wait_time = reset_time - time.time() + 5  # 5 секунд буфера
-                if wait_time > 0:
-                    time.sleep(wait_time)
+                wait_time = min(max(reset_time - time.time() + 5, 0), 300)
+                if wait_time > 0 and self._wait_interruptible(wait_time):
+                    return False, None
                 # Повторяем запрос после ожидания
                 response = requests.get(url, headers=headers, timeout=Config.HTTP_REQUEST_TIMEOUT)
 
