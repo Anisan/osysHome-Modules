@@ -82,10 +82,11 @@ class Modules(BasePlugin):
         @self.blueprint.route(f"{base}/catalog", methods=["GET"])
         @handle_admin_required
         def github_catalog():
+            installed_plugins = []
             with session_scope() as session:
                 ps = session.query(Plugin).order_by(Plugin.name).all()
-                installed = [row2dict(plugin) for plugin in ps]
-            catalog = self.get_github_catalog(installed)
+                installed_plugins = [row2dict(plugin) for plugin in ps]
+            catalog = self.get_github_catalog(installed_plugins)
             return jsonify({"success": True, **catalog})
 
         @self.blueprint.route(f"{base}/status", methods=["GET"])
