@@ -277,6 +277,18 @@ class Modules(BasePlugin):
             self._set_operation_step(job_id, step_id, status, message)
         return callback
 
+    def _register_installed_module(self, name, owner, repo, updated):
+        """Register or update a plugin row after files are installed."""
+        url = f'https://github.com/{owner}/{repo}'
+        module = Plugin.query.filter(Plugin.name == name).one_or_none()
+        if module is None:
+            module = Plugin()
+            module.name = name
+        module.updated = updated
+        module.url = url
+        module.save()
+        db.session.commit()
+
     def _run_operation_job(self, job_id, op, data):
         with self._app.app_context():
             self._github_status_job_id = job_id
@@ -324,12 +336,7 @@ class Modules(BasePlugin):
         )
 
         self._set_operation_step(job_id, 'register', 'running')
-        module = Plugin()
-        module.name = name
-        module.updated = dt
-        module.url = f'https://github.com/{owner}/{repo}'
-        module.save()
-        db.session.commit()
+        self._register_installed_module(name, owner, repo, dt)
         self._set_operation_step(job_id, 'register', 'done')
 
         addNotify("Success install", f'Success install module {name}', CategoryNotify.Info, self.name)
@@ -511,12 +518,7 @@ class Modules(BasePlugin):
                     raise Exception(f"Failed to get info for {owner}/{repo}")
                 branch = info['default_branch']
                 dt = self.download_and_extract_github_repo(owner, repo, branch, None, os.path.join(Config.PLUGINS_FOLDER,name))
-                module = Plugin()
-                module.name = name
-                module.updated = dt
-                module.url = f'https://github.com/{owner}/{repo}'
-                module.save()
-                db.session.commit()
+                self._register_installed_module(name, owner, repo, dt)
                 addNotify("Success install",f'Success install module {name}',CategoryNotify.Info,self.name)
                 setProperty("SystemVar.NeedRestart", True, self.name)
             except Exception as ex:
