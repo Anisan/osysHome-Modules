@@ -1258,9 +1258,21 @@ class Modules(BasePlugin):
                 if has_new:
                     setProperty("SystemVar.update", True, self.name)
                     self.logger.info(f'Found update for osysHome (branch: {branch})')
+                    addNotify(
+                        "Available update",
+                        f'Available update osysHome (branch: {branch})',
+                        CategoryNotify.Info,
+                        self.name,
+                    )
             else:
                 setProperty("SystemVar.update", True, self.name)
                 self.logger.info(f'Found update for osysHome (branch: {branch})')
+                addNotify(
+                    "Available update",
+                    f'Available update osysHome (branch: {branch})',
+                    CategoryNotify.Info,
+                    self.name,
+                )
         repos = {}
         try:
             data = self.github_request("https://api.github.com/search/repositories?q=osysHome&per_page=100")
