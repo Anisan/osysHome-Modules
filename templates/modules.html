@@ -464,13 +464,6 @@
           </div>
         </div>
       </div>
-      <div class="d-flex flex-wrap gap-2 mt-2">
-        <span class="badge text-bg-secondary">{{ _('Installed') }}: [[ installedCount ]]</span>
-        <span class="badge text-bg-secondary">{{ _('Available') }}: [[ availableCount ]]</span>
-        <span class="badge" :class="updatesCount ? 'text-bg-warning' : 'text-bg-success'">
-          {{ _('Updates') }}: [[ updatesCount ]]
-        </span>
-      </div>
     </div>
   </div>
 
@@ -493,7 +486,7 @@
   <ul class="nav nav-tabs mb-3" id="modulesTabs" role="tablist">
     <li class="nav-item" role="presentation">
       <a class="nav-link active" id="installed-tab" data-bs-toggle="tab" href="#installed" role="tab" aria-controls="installed" aria-selected="true">
-        <i class="fas fa-check-circle me-1"></i>{{ _('Installed')}}
+        <i class="fas fa-check-circle me-1"></i>{{ _('Installed')}} <span class="badge rounded-pill text-bg-secondary ms-1">[[ installedCount ]]</span>
       </a>
     </li>
     <li class="nav-item" role="presentation">
@@ -504,7 +497,7 @@
     </li>
     <li class="nav-item" role="presentation">
       <a class="nav-link" id="available-tab" data-bs-toggle="tab" href="#uninstalled" role="tab" aria-controls="uninstalled" aria-selected="false">
-        <i class="fas fa-store me-1"></i>{{ _('Available')}}
+        <i class="fas fa-store me-1"></i>{{ _('Available')}} <span class="badge rounded-pill text-bg-secondary ms-1">[[ availableCount ]]</span>
       </a>
     </li>
   </ul>
