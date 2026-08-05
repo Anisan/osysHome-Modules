@@ -70,6 +70,7 @@ class Modules(BasePlugin):
         self.title = "Modules"
         self.description = """List modules"""
         self.category = "System"
+        self.version = "1.1"
         self.actions = ["search","cycle","widget"]
         self.author = "Eraser"
 
@@ -105,7 +106,7 @@ class Modules(BasePlugin):
             if not owner or not repo:
                 return jsonify({"success": False, "message": "owner and repo are required"}), 400
 
-            branches, error = self.get_github_branches(owner, repo)
+            branches, error = self.get_github_branches(owner, repo, repo_url=url)
             if error:
                 return jsonify({"success": False, "message": error}), 502
             return jsonify({"success": True, "result": branches})
@@ -123,7 +124,7 @@ class Modules(BasePlugin):
             if not owner or not repo:
                 return jsonify({"success": False, "message": "owner and repo are required"}), 400
 
-            commits, error = self.get_github_commits(owner, repo, branch=branch, per_page=per_page)
+            commits, error = self.get_github_commits(owner, repo, branch=branch, per_page=per_page, repo_url=url)
             if error:
                 return jsonify({"success": False, "message": error}), 502
             return jsonify({"success": True, "result": commits})
@@ -347,6 +348,7 @@ class Modules(BasePlugin):
         commit = (data.get('commit') or '').strip() or None
         step = self._operation_step_callback(job_id)
         module = None
+        provider = 'github'
 
         if core:
             owner = 'Anisan'
@@ -368,23 +370,37 @@ class Modules(BasePlugin):
             target_folder = os.path.join(Config.PLUGINS_FOLDER, name)
             module_name = name
             branch = module.branch
+            provider = self._detect_repo_provider(url)
 
         if not commit:
             self._set_operation_step(job_id, 'fetch_info', 'running')
-            info = self.get_github_repo_info(owner, repo)
-            if info is None:
-                message = self._last_github_error_message(f"Failed to get info for {owner}/{repo}")
-                self._set_operation_step(job_id, 'fetch_info', 'error', message)
-                raise Exception(message)
-            if not branch:
+            if provider == 'github' and not branch:
+                info = self.get_github_repo_info(owner, repo)
+                if info is None:
+                    message = self._last_github_error_message(f"Failed to get info for {owner}/{repo}")
+                    self._set_operation_step(job_id, 'fetch_info', 'error', message)
+                    raise Exception(message)
                 branch = info.get('default_branch') or 'master'
+            elif not branch:
+                branch = self._get_default_branch(owner, repo, url)
             self._set_operation_step(job_id, 'fetch_info', 'done')
         elif not branch:
             branch = 'master'
 
-        dt = self.download_and_extract_github_repo(
-            owner, repo, branch, commit, target_folder, step_callback=step,
-        )
+        if core:
+            dt = self.download_and_extract_github_repo(
+                owner, repo, branch, commit, target_folder, step_callback=step,
+            )
+        else:
+            dt = self.download_and_extract_repo(
+                owner=owner,
+                repo=repo,
+                branch=branch,
+                commit=commit,
+                target_folder=target_folder,
+                repo_url=url,
+                step_callback=step,
+            )
 
         self._set_operation_step(job_id, 'update_db', 'running')
         if core:
@@ -458,13 +474,25 @@ class Modules(BasePlugin):
 
             owner, repo = self.extract_owner_and_repo(url)
             try:
-                info = self.get_github_repo_info(owner, repo)
-                if info is None:
-                    raise Exception(f"Failed to get info for {owner}/{repo}")
+                provider = self._detect_repo_provider(url)
                 branch = module.branch
                 if branch is None or branch == '':
-                    branch = info['default_branch']
-                dt = self.download_and_extract_github_repo(owner, repo, branch, commit, os.path.join(Config.PLUGINS_FOLDER,name))
+                    if provider == 'github':
+                        info = self.get_github_repo_info(owner, repo)
+                        if info is None:
+                            raise Exception(f"Failed to get info for {owner}/{repo}")
+                        branch = info.get('default_branch') or 'master'
+                    else:
+                        branch = self._get_default_branch(owner, repo, url)
+
+                dt = self.download_and_extract_repo(
+                    owner,
+                    repo,
+                    branch,
+                    commit,
+                    os.path.join(Config.PLUGINS_FOLDER, name),
+                    repo_url=url,
+                )
                 module.updated = dt
                 module.update = False
                 db.session.commit()
@@ -585,16 +613,77 @@ class Modules(BasePlugin):
         return self.render("modules.html", content)
 
     def extract_owner_and_repo(self, url):
-        pattern = r"https://github\.com/([^/]+)/([^/]+)"
-        match = re.match(pattern, url)
-
-        if match:
-            owner, repo = match.groups()
-            if repo.endswith('.git'):
-                repo = repo[:-4]
-            return owner, repo
-        else:
+        """
+        Parse repo owner/name from a URL like:
+          - https://github.com/owner/repo
+          - https://forgejo.example.com/owner/repo
+        """
+        if not url:
             return None, None
+
+        try:
+            parsed = urlparse(url)
+        except Exception:
+            return None, None
+
+        # Accept URLs with scheme/host, but ignore any extra path parts.
+        path = (parsed.path or '').strip('/')
+        parts = [p for p in path.split('/') if p]
+        if len(parts) < 2:
+            return None, None
+
+        owner = parts[0]
+        repo = parts[1]
+        if repo.endswith('.git'):
+            repo = repo[:-4]
+        return owner, repo
+
+    def _detect_repo_provider(self, repo_url):
+        host = (urlparse(repo_url).netloc or '').lower()
+        if host.endswith('github.com'):
+            return 'github'
+        # Forgejo usually looks like: forgejo.example.com / api/v1/...
+        # We keep this generic because osysHome currently supports GitHub-like providers only.
+        return 'forgejo'
+
+    def _parse_repo_target(self, repo_url):
+        """
+        Return parsed fields for GitHub/Forgejo-like servers:
+        (provider, scheme, host, owner, repo, api_base_url)
+        """
+        parsed = urlparse(repo_url)
+        provider = self._detect_repo_provider(repo_url)
+        scheme = parsed.scheme or 'https'
+        host = parsed.netloc
+        owner, repo = self.extract_owner_and_repo(repo_url)
+        if not owner or not repo:
+            return None
+
+        if provider == 'github':
+            api_base = 'https://api.github.com'
+        else:
+            api_base = f"{scheme}://{host}/api/v1"
+        return provider, scheme, host, owner, repo, api_base
+
+    def _get_default_branch(self, owner, repo, repo_url):
+        if not repo_url:
+            return 'master'
+        provider = self._detect_repo_provider(repo_url)
+        if provider == 'github':
+            info = self.get_github_repo_info(owner, repo)
+            if info:
+                return info.get('default_branch') or 'master'
+            return 'master'
+        parsed = self._parse_repo_target(repo_url)
+        if not parsed:
+            return 'master'
+        _, scheme, host, _, _, api_base = parsed
+        repo_info = self._forgejo_request_json(f"{api_base}/repos/{owner}/{repo}")
+        if self._github_request_failed(repo_info):
+            return 'master'
+        if isinstance(repo_info, dict):
+            return repo_info.get('default_branch') or repo_info.get('defaultBranch') or 'master'
+        return 'master'
 
     def _resolve_github_target(self, owner=None, repo=None, url=None, module_name=None):
         owner = (owner or '').strip() or None
@@ -775,6 +864,35 @@ class Modules(BasePlugin):
         message = self._last_github_error_message()
         return {'_error': True, 'status': 403, 'message': message}
 
+    def _forgejo_request_json(self, url, params=None):
+        """Simple JSON request for Forgejo/Gitea-like APIs (no rate-limit handling)."""
+        headers = {
+            'Accept': 'application/json',
+            'User-Agent': 'osysHome-Modules',
+        }
+        try:
+            response = requests.get(
+                url,
+                headers=headers,
+                params=params,
+                timeout=Config.HTTP_REQUEST_TIMEOUT,
+            )
+        except requests.exceptions.RequestException as ex:
+            self.logger.warning("Forgejo API request failed for %s: %s", url, ex)
+            return {'_error': True, 'status': 0, 'message': str(ex)}
+
+        if response.status_code != 200:
+            return {
+                '_error': True,
+                'status': response.status_code,
+                'message': response.text[:200] if response.text else f'HTTP {response.status_code}',
+            }
+
+        try:
+            return response.json()
+        except ValueError:
+            return {'_error': True, 'status': response.status_code, 'message': 'Invalid JSON response'}
+
     def _github_request_failed(self, data):
         if data is None:
             return True
@@ -785,14 +903,74 @@ class Modules(BasePlugin):
             return data.get('message') or default
         return default
 
-    def get_github_branches(self, owner, repo):
+    def get_github_branches(self, owner, repo, repo_url=None):
+        if repo_url and self._detect_repo_provider(repo_url) != 'github':
+            parsed = self._parse_repo_target(repo_url)
+            if not parsed:
+                return None, "Invalid repository URL"
+            _, scheme, host, _, _, api_base = parsed
+            url = f"{api_base}/repos/{owner}/{repo}/branches"
+            data = self._forgejo_request_json(url)
+            if self._github_request_failed(data):
+                return None, self._github_error_message(data, default="Forgejo API unavailable")
+            if isinstance(data, dict) and 'branches' in data:
+                return data['branches'], None
+            return data, None
+
         url = f"https://api.github.com/repos/{owner}/{repo}/branches"
         data = self.github_request(url)
         if self._github_request_failed(data):
             return None, self._github_error_message(data)
         return data, None
 
-    def get_github_commits(self, owner, repo, branch=None, per_page=15):
+    def get_github_commits(self, owner, repo, branch=None, per_page=15, repo_url=None):
+        if repo_url and self._detect_repo_provider(repo_url) != 'github':
+            parsed = self._parse_repo_target(repo_url)
+            if not parsed:
+                return None, "Invalid repository URL"
+            _, scheme, host, _, _, api_base = parsed
+            url = f"{api_base}/repos/{owner}/{repo}/commits"
+            params = {}
+            if branch:
+                params['sha'] = branch
+            # Forgejo usually supports per_page as GitHub; if not, backend will fail and UI will show error.
+            params['per_page'] = per_page
+            data = self._forgejo_request_json(url, params=params)
+            if self._github_request_failed(data):
+                return None, self._github_error_message(data, default="Forgejo API unavailable")
+
+            commits = data
+            if isinstance(data, dict) and 'commits' in data:
+                commits = data['commits']
+            if not isinstance(commits, list):
+                commits = [commits]
+
+            def to_github_shape(item):
+                commit_block = item.get('commit') or {}
+                author_block = commit_block.get('author') or {}
+                committer_block = commit_block.get('committer') or {}
+                date = author_block.get('date') or committer_block.get('date')
+                name = author_block.get('name') or committer_block.get('name')
+                message = commit_block.get('message') or ''
+                sha = item.get('sha') or item.get('id') or ''
+                html_url = item.get('html_url') or item.get('url') or ''
+                author = item.get('author') or {}
+                avatar_url = author.get('avatar_url') or author.get('avatarUrl') or ''
+                return {
+                    'sha': sha,
+                    'html_url': html_url,
+                    'commit': {
+                        'message': message,
+                        'author': {
+                            'name': name,
+                            'date': date,
+                        }
+                    },
+                    'author': {'avatar_url': avatar_url} if avatar_url else None,
+                }
+
+            return [to_github_shape(c) for c in commits], None
+
         url = f"https://api.github.com/repos/{owner}/{repo}/commits?"
         if branch:
             url += f"sha={branch}&"
@@ -824,6 +1002,26 @@ class Modules(BasePlugin):
         for filename in self._readme_filenames(lang):
             url = f"https://api.github.com/repos/{owner}/{repo}/contents/{filename}?ref={ref}"
             data = self.github_request(url)
+            if self._github_request_failed(data):
+                continue
+            if isinstance(data, dict) and data.get('encoding') == 'base64' and data.get('content'):
+                try:
+                    return base64.b64decode(data['content']).decode('utf-8'), filename
+                except (ValueError, UnicodeDecodeError) as ex:
+                    self.logger.warning("Failed to decode README %s/%s: %s", owner, repo, ex)
+        return None, None
+
+    def _fetch_forgejo_readme(self, owner, repo, branch, lang, repo_url):
+        ref = branch or 'master'
+        parsed = self._parse_repo_target(repo_url)
+        if not parsed:
+            return None, None
+        _, scheme, host, _, _, api_base = parsed
+        for filename in self._readme_filenames(lang):
+            # Forgejo/Gitea usually uses GitHub-like "contents" API with base64 content.
+            url = f"{api_base}/repos/{owner}/{repo}/contents/{filename}"
+            params = {'ref': ref}
+            data = self._forgejo_request_json(url, params=params)
             if self._github_request_failed(data):
                 continue
             if isinstance(data, dict) and data.get('encoding') == 'base64' and data.get('content'):
@@ -890,14 +1088,26 @@ class Modules(BasePlugin):
         owner, repo = self._resolve_github_target(owner, repo, url=url, module_name=module_name)
         if not owner or not repo:
             return None, None, "owner and repo are required"
-        content, _ = self._fetch_github_readme(owner, repo, branch, lang)
+        if url and self._detect_repo_provider(url) != 'github':
+            content, _ = self._fetch_forgejo_readme(owner, repo, branch, lang, url)
+        else:
+            content, _ = self._fetch_github_readme(owner, repo, branch, lang)
         if content is None:
             return None, None, f"README file not found for '{owner}/{repo}'"
         ref = branch or 'master'
-        meta = {
-            'source': 'github',
-            'github_raw_base': f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/",
-        }
+        if url and self._detect_repo_provider(url) != 'github':
+            parsed = self._parse_repo_target(url)
+            _, scheme, host, _, _, _api_base = parsed
+            meta = {
+                'source': 'forgejo',
+                # Used for image path rewriting in markdown_to_html; depends on Forgejo raw URL conventions.
+                'github_raw_base': f"{scheme}://{host}/raw/{owner}/{repo}/{ref}/",
+            }
+        else:
+            meta = {
+                'source': 'github',
+                'github_raw_base': f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/",
+            }
         return content, meta, None
 
     def get_github_catalog(self, installed_plugins):
@@ -1103,6 +1313,189 @@ class Modules(BasePlugin):
 
         return dt
 
+    def download_and_extract_forgejo_repo(self, owner, repo, branch, commit=None, target_folder='.', repo_url=None, step_callback=None):
+        """
+        Download and extract repository archive from Forgejo/Gitea-like servers.
+        """
+        def step(step_id, status, message=None):
+            if step_callback:
+                step_callback(step_id, status, message)
+
+        if not repo_url:
+            raise ValueError("repo_url is required for Forgejo download")
+        parsed = self._parse_repo_target(repo_url)
+        if not parsed:
+            raise ValueError(f"Invalid repository URL: {repo_url}")
+        _, scheme, host, _, _, api_base = parsed
+
+        dt = get_now_to_utc()
+        if commit is not None:
+            step('fetch_info', 'running')
+            commit_info = self._forgejo_request_json(f"{api_base}/repos/{owner}/{repo}/commits/{commit}")
+            if self._github_request_failed(commit_info):
+                message = self._github_error_message(commit_info, default="Failed to get commit info")
+                step('fetch_info', 'error', message)
+                raise Exception(message)
+            # Try to extract commit author/committer date.
+            commit_block = (commit_info or {}).get('commit') or {}
+            author_block = commit_block.get('author') or {}
+            committer_block = commit_block.get('committer') or {}
+            date_str = author_block.get('date') or committer_block.get('date')
+            if not date_str:
+                step('fetch_info', 'done', None)
+            else:
+                dt = datetime.datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            step('fetch_info', 'done')
+
+        local_filename = f"{repo}.zip"
+
+        # Try multiple archive URL patterns because Forgejo can be configured differently.
+        archive_candidates = []
+        if commit is None:
+            archive_candidates = [
+                f"{scheme}://{host}/{owner}/{repo}/archive/refs/heads/{branch}.zip",
+                f"{scheme}://{host}/{owner}/{repo}/archive/{branch}.zip",
+                f"{scheme}://{host}/{owner}/{repo}/archive/{branch}.zip",  # fallback
+            ]
+        else:
+            archive_candidates = [
+                f"{scheme}://{host}/{owner}/{repo}/archive/{commit}.zip",
+                f"{scheme}://{host}/{owner}/{repo}/archive/{commit}.zip",
+            ]
+
+        step('download', 'running')
+        response_content = None
+        last_status = None
+        last_error = None
+        for url in archive_candidates:
+            self.logger.info("Downloading %s...", url)
+            try:
+                resp = requests.get(url, timeout=Config.HTTP_REQUEST_TIMEOUT)
+                last_status = resp.status_code
+                if resp.status_code == 200:
+                    response_content = resp.content
+                    break
+            except requests.exceptions.RequestException as ex:
+                last_error = str(ex)
+
+        if response_content is None:
+            if last_error:
+                message = f"Failed to download Forgejo archive: {last_error}"
+            else:
+                message = f"Failed to download Forgejo archive: HTTP {last_status}"
+            step('download', 'error', message)
+            raise Exception(message)
+
+        with open(local_filename, 'wb') as f:
+            f.write(response_content)
+        self.logger.info(f"Downloaded {local_filename}")
+        step('download', 'done')
+
+        os.makedirs(target_folder, exist_ok=True)
+        temp_extract_folder = os.path.join(target_folder, "temp")
+        os.makedirs(temp_extract_folder, exist_ok=True)
+
+        step('extract', 'running')
+        self.logger.info(f"Extracting {local_filename} to {temp_extract_folder}...")
+        try:
+            with zipfile.ZipFile(local_filename, 'r') as zip_ref:
+                zip_ref.extractall(temp_extract_folder)
+        except (zipfile.BadZipFile, OSError) as ex:
+            step('extract', 'error', str(ex))
+            raise
+        self.logger.info(f"Extracted to {temp_extract_folder}")
+        step('extract', 'done')
+
+        # GitHub zip has a predictable inner folder name, Forgejo usually also does but not always.
+        dirs = []
+        for item in os.listdir(temp_extract_folder):
+            p = os.path.join(temp_extract_folder, item)
+            if os.path.isdir(p):
+                dirs.append(item)
+
+        preferred = None
+        if commit is None:
+            preferred = [d for d in dirs if d.lower().startswith(f"{repo}-{branch}".lower())]
+        else:
+            preferred = [d for d in dirs if d.lower().startswith(f"{repo}-{commit}".lower())]
+
+        if preferred:
+            inner_folder = os.path.join(temp_extract_folder, preferred[0])
+        elif len(dirs) == 1:
+            inner_folder = os.path.join(temp_extract_folder, dirs[0])
+        else:
+            # Last resort: try repo- prefix (most common naming).
+            pref2 = [d for d in dirs if d.lower().startswith(repo.lower() + '-')]
+            if pref2:
+                inner_folder = os.path.join(temp_extract_folder, pref2[0])
+            else:
+                step('install_files', 'error', f"Cannot determine archive inner folder in {temp_extract_folder}")
+                raise Exception("Cannot determine archive inner folder")
+
+        step('install_files', 'running')
+        if not os.path.isdir(inner_folder):
+            message = f"Archive folder not found: {inner_folder}"
+            step('install_files', 'error', message)
+            raise Exception(message)
+
+        for item in os.listdir(inner_folder):
+            s = os.path.join(inner_folder, item)
+            d = os.path.join(target_folder, item)
+            if os.path.isdir(s):
+                shutil.copytree(s, d, dirs_exist_ok=True)
+            else:
+                shutil.copy2(s, d)
+        step('install_files', 'done')
+
+        step('cleanup', 'running')
+        shutil.rmtree(temp_extract_folder)
+        os.remove(local_filename)
+        self.logger.info(f"Removed {local_filename}")
+        step('cleanup', 'done')
+
+        requirements_file = os.path.join(target_folder, 'requirements.txt')
+        step('dependencies', 'running')
+        if os.path.isfile(requirements_file):
+            self.logger.info(f"File {requirements_file} found. Install packets...")
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", 'install', '-r', requirements_file],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode == 0:
+                self.logger.info("Packets installed.")
+                step('dependencies', 'done')
+            else:
+                stderr = (result.stderr or result.stdout or 'pip install failed').strip()
+                self.logger.error("Error install packets: %s", stderr)
+                step('dependencies', 'error', stderr[:500])
+                raise Exception(stderr[:500])
+        else:
+            self.logger.info(f"File {requirements_file} not found.")
+            step('dependencies', 'done', 'skipped')
+
+        return dt
+
+    def download_and_extract_repo(self, owner, repo, branch, commit=None, target_folder='.', repo_url=None, step_callback=None):
+        if repo_url and self._detect_repo_provider(repo_url) != 'github':
+            return self.download_and_extract_forgejo_repo(
+                owner=owner,
+                repo=repo,
+                branch=branch,
+                commit=commit,
+                target_folder=target_folder,
+                repo_url=repo_url,
+                step_callback=step_callback,
+            )
+        return self.download_and_extract_github_repo(
+            owner=owner,
+            repo=repo,
+            branch=branch,
+            commit=commit,
+            target_folder=target_folder,
+            step_callback=step_callback,
+        )
+
     def search(self, query: str) -> str:
         res = []
         for key,plugin in plugins.items():
@@ -1123,7 +1516,52 @@ class Modules(BasePlugin):
             content['update'] = res
         return render_template("widget_modules.html",**content)
 
-    def check_for_new_commits(self, repo_owner, repo_name, last_known_date, branch=None, github_token=None, assume_local_naive=False):
+    def _check_for_new_commits_forgejo(self, repo_owner, repo_name, last_known_date, branch=None, repo_url=None):
+        """
+        Check updates for Forgejo/Gitea-like servers using /api/v1/.../commits.
+        """
+        if not repo_url:
+            return False, None
+        parsed = self._parse_repo_target(repo_url)
+        if not parsed:
+            return False, None
+        _, scheme, host, _, _, api_base = parsed
+
+        url = f"{api_base}/repos/{repo_owner}/{repo_name}/commits"
+        params = {'per_page': 1}
+        if branch:
+            params['sha'] = branch
+
+        data = self._forgejo_request_json(url, params=params)
+        if self._github_request_failed(data):
+            # Keep behaviour compatible with existing GitHub path: just treat as "no update".
+            return False, None
+
+        commits = data
+        if isinstance(data, dict) and 'commits' in data:
+            commits = data['commits']
+        if not commits:
+            return False, None
+        if not isinstance(commits, list):
+            commits = [commits]
+
+        latest = commits[0] or {}
+        commit_block = latest.get('commit') or {}
+        committer = commit_block.get('committer') or {}
+        author = commit_block.get('author') or {}
+        latest_commit_date_str = committer.get('date') or author.get('date')
+        if not latest_commit_date_str:
+            return False, None
+
+        latest_commit_date = datetime.datetime.fromisoformat(latest_commit_date_str.replace('Z', '+00:00'))
+        if latest_commit_date.tzinfo is None:
+            latest_commit_date = latest_commit_date.replace(tzinfo=datetime.timezone.utc)
+
+        if latest_commit_date > last_known_date:
+            return True, latest_commit_date.isoformat()
+        return False, latest_commit_date.isoformat()
+
+    def check_for_new_commits(self, repo_owner, repo_name, last_known_date, branch=None, github_token=None, assume_local_naive=False, repo_url=None):
         """
         Проверяет наличие новых коммитов в указанном репозитории GitHub
 
@@ -1152,6 +1590,16 @@ class Modules(BasePlugin):
         except (ValueError, AttributeError) as e:
             self.logger.error(f"Invalid date format: {e}")
             return False, None
+
+        # If repo_url points to non-GitHub provider => use that provider's API.
+        if repo_url and self._detect_repo_provider(repo_url) != 'github':
+            return self._check_for_new_commits_forgejo(
+                repo_owner,
+                repo_name,
+                last_known_date=last_known_date,
+                branch=branch,
+                repo_url=repo_url,
+            )
 
         # Формируем URL
         base_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/commits?"
@@ -1308,6 +1756,7 @@ class Modules(BasePlugin):
                         last_known_date=last_known,
                         branch=plugin.branch,
                         github_token=self.config.get('token',None),
+                        repo_url=url,
                     )
                 if has_new:
                     plugin.update = True

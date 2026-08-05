@@ -570,6 +570,7 @@
                   <a v-if="plugin.title" :href="'/admin/'+plugin.name" @click.stop>[[ plugin.title ]]</a>
                   <a v-else :href="'/admin/'+plugin.name" @click.stop>[[ plugin.name ]]</a>
                   <span v-if="!plugin.active" class="badge text-bg-secondary">{{ _('Inactive') }}</span>
+                  <span v-if="isDebugLogging(plugin)" class="badge text-bg-danger">DEBUG</span>
                   <span v-if="plugin.actions && plugin.actions.includes('cycle') && plugin.alive" class="badge text-bg-success">
                     <i class="fas fa-play me-1"></i>{{ _('Cycle running') }}
                   </span>
@@ -734,9 +735,10 @@
             <div class="d-flex gap-3 align-items-start">
               <img :src="'/'+plugin.name+'/static/'+plugin.name+'.png'" class="module-icon" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'" :alt="plugin.name">
               <div class="flex-grow-1 min-w-0">
-                <div class="module-title">
+                <div class="module-title d-flex flex-wrap align-items-center gap-1">
                   <span v-if="plugin.title">[[ plugin.title ]]</span>
                   <span v-else>[[ plugin.name ]]</span>
+                  <span v-if="isDebugLogging(plugin)" class="badge text-bg-danger">DEBUG</span>
                 </div>
                 <div class="module-meta mt-1">[[ plugin.description ]]</div>
                 <div class="small mt-1">{{ _('Version') }}: [[ plugin.version ]]</div>
@@ -1443,6 +1445,12 @@
           }
           return plugin.actions.filter(action => action !== 'cycle')
         },
+        isDebugLogging(plugin) {
+          if (!plugin) {
+            return false
+          }
+          return String(plugin.level_logging || '').toUpperCase() === 'DEBUG'
+        },
         async fetchData(){
           await this.fetchPlugins()
           await this.fetchGithub()
@@ -1924,6 +1932,13 @@
         async saveSettings(){
           const response = await axios.post("/api/plugins/"+this.plugin.name+"/settings", this.settings)
           this.resultSave = "Result: " + response.data.message
+          await this.fetchPlugins()
+          if (this.plugin) {
+            const local = this.plugins.find(p => p.name === this.plugin.name)
+            if (local) {
+              Vue.set(this.plugin, 'level_logging', local.level_logging)
+            }
+          }
           setTimeout(() => {
             this.resultSave = null;
           }, 5000);
