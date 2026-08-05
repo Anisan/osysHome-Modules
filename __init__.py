@@ -689,6 +689,16 @@ class Modules(BasePlugin):
         owner = (owner or '').strip() or None
         repo = (repo or '').strip() or None
 
+        # For non-GitHub providers the URL is the source of truth because
+        # the frontend may still carry stale GitHub enrichment fields
+        # (e.g. owner=Anisan) from the public catalog.
+        if url:
+            provider = self._detect_repo_provider(url)
+            if provider != 'github':
+                parsed_owner, parsed_repo = self.extract_owner_and_repo(url)
+                if parsed_owner and parsed_repo:
+                    return parsed_owner, parsed_repo
+
         if owner and repo:
             return owner, repo
 
