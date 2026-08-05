@@ -764,7 +764,7 @@
                       type="button"
                       class="dropdown-item text-success"
                       :disabled="operationInProgress"
-                      @click="startUpgrade('?op=upgrade&name='+plugin.name+'&url='+plugin.html_url, plugin.title || plugin.name)"
+                      @click="startUpgrade('?op=upgrade&name='+plugin.name+'&url='+repoUrlFor(plugin), plugin.title || plugin.name)"
                     >
                       <i class="fa-solid fa-upload"></i>{{ _('Upgrade') }}
                     </button>
@@ -879,7 +879,7 @@
                       <div>{{ _('Author')}}: <b>[[plugin.author]]</b></div>
                       <div>{{ _('Updated')}}: <b>[[plugin.updated]]</b></div>
                       <div>
-                        <a v-if="plugin.html_url" :href="plugin.html_url" target="_blank"><i class="fab fa-github"></i> Github</a>
+                        <a v-if="repoUrlFor(plugin)" :href="repoUrlFor(plugin)" target="_blank"><i class="fab fa-github"></i> Github</a>
                       </div>
                       <div v-if="hasDocs">
                         <a :href="docsUrl(plugin)" target="_blank"><i class="fas fa-info-circle"></i> {{ _('Help')}}</a>
@@ -889,8 +889,8 @@
                       <a
                         v-if="plugin.update && plugin.name !='osysHome'"
                         class="btn btn-success"
-                        :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url"
-                        @click.stop.prevent="startUpgrade('?op=upgrade&name='+plugin.name+'&url='+plugin.html_url, plugin.title || plugin.name)"
+                        :href="'?op=upgrade&name='+plugin.name+'&url='+repoUrlFor(plugin)"
+                        @click.stop.prevent="startUpgrade('?op=upgrade&name='+plugin.name+'&url='+repoUrlFor(plugin), plugin.title || plugin.name)"
                       ><i class="fa-solid fa-upload"></i> {{ _('Upgrade')}}</a>
                       <a
                         v-if="plugin.update && plugin.name =='osysHome'"
@@ -959,8 +959,8 @@
                                 <a
                                   v-else
                                   class="badge bg-secondary mb-2"
-                                  :href="'?op=upgrade&name='+plugin.name+'&url='+plugin.html_url+'&commit='+item.sha"
-                                  @click.stop.prevent="startUpgrade('?op=upgrade&name='+plugin.name+'&url='+plugin.html_url+'&commit='+item.sha, plugin.title || plugin.name)"
+                                  :href="'?op=upgrade&name='+plugin.name+'&url='+repoUrlFor(plugin)+'&commit='+item.sha"
+                                  @click.stop.prevent="startUpgrade('?op=upgrade&name='+plugin.name+'&url='+repoUrlFor(plugin)+'&commit='+item.sha, plugin.title || plugin.name)"
                                 ><i class="fa-solid fa-upload"></i> {{ _('Install')}}</a>
                               </span>
                               <small class="opacity-50">[[item.commit.author.date]]</small>
@@ -1482,9 +1482,15 @@
           return {
             owner: plugin.owner || undefined,
             repo: plugin.repo || undefined,
-            url: plugin.url || plugin.html_url || undefined,
+            url: this.repoUrlFor(plugin) || undefined,
             module: plugin.name || undefined,
           }
+        },
+        repoUrlFor(plugin) {
+          if (!plugin) {
+            return ''
+          }
+          return plugin.url || plugin.html_url || ''
         },
         docsCategoryFor(plugin) {
           const item = plugin || this.plugin
@@ -1988,7 +1994,7 @@
               payload: {
                 op: 'upgrade',
                 name: plugin.name,
-                url: plugin.html_url || plugin.url || '',
+                url: this.repoUrlFor(plugin),
                 title: plugin.title || plugin.name,
               },
               title: plugin.title || plugin.name,

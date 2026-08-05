@@ -903,6 +903,39 @@ class Modules(BasePlugin):
         except ValueError:
             return {'_error': True, 'status': response.status_code, 'message': 'Invalid JSON response'}
 
+    def _forgejo_get_commit_info(self, owner, repo, commit, api_base):
+        """Fetch a single commit from Forgejo/Gitea (paths differ from GitHub)."""
+        for path in (
+            f"{api_base}/repos/{owner}/{repo}/git/commits/{commit}",
+            f"{api_base}/repos/{owner}/{repo}/commits/{commit}",
+        ):
+            data = self._forgejo_request_json(path)
+            if not self._github_request_failed(data):
+                return data
+
+        data = self._forgejo_request_json(
+            f"{api_base}/repos/{owner}/{repo}/commits",
+            params={'sha': commit, 'limit': 1},
+        )
+        if self._github_request_failed(data):
+            return None
+        if isinstance(data, list) and data:
+            return data[0]
+        if isinstance(data, dict):
+            commits = data.get('commits')
+            if isinstance(commits, list) and commits:
+                return commits[0]
+        return None
+
+    @staticmethod
+    def _forgejo_commit_date(commit_info):
+        if not isinstance(commit_info, dict):
+            return None
+        commit_block = commit_info.get('commit') or {}
+        author_block = commit_block.get('author') or {}
+        committer_block = commit_block.get('committer') or {}
+        return author_block.get('date') or committer_block.get('date')
+
     def _github_request_failed(self, data):
         if data is None:
             return True
@@ -964,6 +997,11 @@ class Modules(BasePlugin):
                 message = commit_block.get('message') or ''
                 sha = item.get('sha') or item.get('id') or ''
                 html_url = item.get('html_url') or item.get('url') or ''
+                # Forgejo/Gitea can return API URLs in "url" but frontend expects a web page.
+                if isinstance(html_url, str) and ("/api/" in html_url or html_url.startswith(api_base)):
+                    html_url = ''
+                if not html_url and sha:
+                    html_url = f"{scheme}://{host}/{owner}/{repo}/commit/{sha}"
                 author = item.get('author') or {}
                 avatar_url = author.get('avatar_url') or author.get('avatarUrl') or ''
                 return {
@@ -1341,21 +1379,17 @@ class Modules(BasePlugin):
         dt = get_now_to_utc()
         if commit is not None:
             step('fetch_info', 'running')
-            commit_info = self._forgejo_request_json(f"{api_base}/repos/{owner}/{repo}/commits/{commit}")
-            if self._github_request_failed(commit_info):
-                message = self._github_error_message(commit_info, default="Failed to get commit info")
-                step('fetch_info', 'error', message)
-                raise Exception(message)
-            # Try to extract commit author/committer date.
-            commit_block = (commit_info or {}).get('commit') or {}
-            author_block = commit_block.get('author') or {}
-            committer_block = commit_block.get('committer') or {}
-            date_str = author_block.get('date') or committer_block.get('date')
-            if not date_str:
-                step('fetch_info', 'done', None)
-            else:
+            commit_info = self._forgejo_get_commit_info(owner, repo, commit, api_base)
+            date_str = self._forgejo_commit_date(commit_info)
+            if date_str:
                 dt = datetime.datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-            step('fetch_info', 'done')
+                step('fetch_info', 'done')
+            else:
+                self.logger.warning(
+                    "Forgejo commit info unavailable for %s/%s@%s, continuing with archive download",
+                    owner, repo, commit,
+                )
+                step('fetch_info', 'done', 'commit date unavailable')
 
         local_filename = f"{repo}.zip"
 
@@ -1363,13 +1397,13 @@ class Modules(BasePlugin):
         archive_candidates = []
         if commit is None:
             archive_candidates = [
-                f"{scheme}://{host}/{owner}/{repo}/archive/refs/heads/{branch}.zip",
+                f"{api_base}/repos/{owner}/{repo}/archive/{branch}.zip",
                 f"{scheme}://{host}/{owner}/{repo}/archive/{branch}.zip",
-                f"{scheme}://{host}/{owner}/{repo}/archive/{branch}.zip",  # fallback
+                f"{scheme}://{host}/{owner}/{repo}/archive/refs/heads/{branch}.zip",
             ]
         else:
             archive_candidates = [
-                f"{scheme}://{host}/{owner}/{repo}/archive/{commit}.zip",
+                f"{api_base}/repos/{owner}/{repo}/archive/{commit}.zip",
                 f"{scheme}://{host}/{owner}/{repo}/archive/{commit}.zip",
             ]
 
@@ -1428,6 +1462,13 @@ class Modules(BasePlugin):
             preferred = [d for d in dirs if d.lower().startswith(f"{repo}-{branch}".lower())]
         else:
             preferred = [d for d in dirs if d.lower().startswith(f"{repo}-{commit}".lower())]
+            if not preferred and len(commit) >= 7:
+                short = commit[:7]
+                preferred = [
+                    d for d in dirs
+                    if d.lower().startswith(f"{repo}-{short}".lower())
+                    or d.lower() == f"{repo}-{short}".lower()
+                ]
 
         if preferred:
             inner_folder = os.path.join(temp_extract_folder, preferred[0])
