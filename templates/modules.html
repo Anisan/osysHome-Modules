@@ -93,6 +93,43 @@
     flex-shrink: 0;
   }
 
+  .module-card.module-card-has-badges {
+    padding-bottom: 2.15rem !important;
+  }
+
+  .module-corner-badges {
+    position: absolute;
+    right: 0.5rem;
+    bottom: 0.45rem;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.3rem;
+    max-width: calc(100% - 1rem);
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .module-corner-badges .badge {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1.15;
+    padding: 0.25rem 0.45rem;
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .module-corner-badges .badge i {
+    font-size: 0.7rem;
+  }
+
+  .module-badge-custom-repo-label {
+    white-space: nowrap;
+  }
+
   .module-card .module-menu-btn {
     width: 2rem;
     height: 2rem;
@@ -560,7 +597,10 @@
         <div class="col" v-for="(plugin,index) in filteredPlugins" :key="'installed-'+plugin.name">
           <div
             class="card module-card p-3"
-            :class="{'module-inactive': !plugin.active}"
+            :class="{
+              'module-inactive': !plugin.active,
+              'module-card-has-badges': hasCustomRepoUrl(plugin) || isDebugLogging(plugin),
+            }"
             :id="'widgetPlugin_'+index"
           >
             <div class="d-flex gap-3 align-items-start">
@@ -570,7 +610,6 @@
                   <a v-if="plugin.title" :href="'/admin/'+plugin.name" @click.stop>[[ plugin.title ]]</a>
                   <a v-else :href="'/admin/'+plugin.name" @click.stop>[[ plugin.name ]]</a>
                   <span v-if="!plugin.active" class="badge text-bg-secondary">{{ _('Inactive') }}</span>
-                  <span v-if="isDebugLogging(plugin)" class="badge text-bg-danger">DEBUG</span>
                   <span v-if="plugin.actions && plugin.actions.includes('cycle') && plugin.alive" class="badge text-bg-success">
                     <i class="fas fa-play me-1"></i>{{ _('Cycle running') }}
                   </span>
@@ -648,6 +687,24 @@
                   </li>
                 </ul>
               </div>
+            </div>
+            <div
+              v-if="hasCustomRepoUrl(plugin) || isDebugLogging(plugin)"
+              class="module-corner-badges"
+            >
+              <span
+                v-if="hasCustomRepoUrl(plugin)"
+                class="badge text-bg-info module-badge-custom-repo"
+                :title="plugin.url"
+              >
+                <i class="fas fa-link"></i>
+                <span class="module-badge-custom-repo-label">{{ _('Custom repo') }}</span>
+              </span>
+              <span
+                v-if="isDebugLogging(plugin)"
+                class="badge text-bg-danger"
+                title="DEBUG"
+              >DEBUG</span>
             </div>
           </div>
         </div>
@@ -731,14 +788,16 @@
         </div>
 
         <div class="col" v-for="(plugin,index) in filteredUpdates" :key="'update-'+plugin.name">
-          <div class="card module-card p-3 border-warning">
+          <div
+            class="card module-card p-3 border-warning"
+            :class="{'module-card-has-badges': hasCustomRepoUrl(plugin) || isDebugLogging(plugin)}"
+          >
             <div class="d-flex gap-3 align-items-start">
               <img :src="'/'+plugin.name+'/static/'+plugin.name+'.png'" class="module-icon" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'" :alt="plugin.name">
               <div class="flex-grow-1 min-w-0">
                 <div class="module-title d-flex flex-wrap align-items-center gap-1">
                   <span v-if="plugin.title">[[ plugin.title ]]</span>
                   <span v-else>[[ plugin.name ]]</span>
-                  <span v-if="isDebugLogging(plugin)" class="badge text-bg-danger">DEBUG</span>
                 </div>
                 <div class="module-meta mt-1">[[ plugin.description ]]</div>
                 <div class="small mt-1">{{ _('Version') }}: [[ plugin.version ]]</div>
@@ -782,6 +841,24 @@
                   </li>
                 </ul>
               </div>
+            </div>
+            <div
+              v-if="hasCustomRepoUrl(plugin) || isDebugLogging(plugin)"
+              class="module-corner-badges"
+            >
+              <span
+                v-if="hasCustomRepoUrl(plugin)"
+                class="badge text-bg-info module-badge-custom-repo"
+                :title="plugin.url"
+              >
+                <i class="fas fa-link"></i>
+                <span class="module-badge-custom-repo-label">{{ _('Custom repo') }}</span>
+              </span>
+              <span
+                v-if="isDebugLogging(plugin)"
+                class="badge text-bg-danger"
+                title="DEBUG"
+              >DEBUG</span>
             </div>
           </div>
         </div>
@@ -1491,6 +1568,30 @@
             return ''
           }
           return plugin.url || plugin.html_url || ''
+        },
+        normalizeRepoUrl(url) {
+          if (!url) {
+            return ''
+          }
+          return String(url).trim().replace(/\/+$/, '').replace(/\.git$/i, '').toLowerCase()
+        },
+        hasCustomRepoUrl(plugin) {
+          if (!plugin) {
+            return false
+          }
+          const userUrl = String(plugin.url || '').trim()
+          if (!userUrl) {
+            return false
+          }
+          if (!/github\.com/i.test(userUrl)) {
+            return true
+          }
+          const name = String(plugin.name || '').trim()
+          if (!name || name.toLowerCase() === 'osyshome') {
+            return this.normalizeRepoUrl(userUrl) !== this.normalizeRepoUrl('https://github.com/Anisan/osysHome')
+          }
+          const expected = `https://github.com/Anisan/osysHome-${name}`
+          return this.normalizeRepoUrl(userUrl) !== this.normalizeRepoUrl(expected)
         },
         docsCategoryFor(plugin) {
           const item = plugin || this.plugin
