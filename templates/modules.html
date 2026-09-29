@@ -1050,6 +1050,12 @@
                       <div>
                         <div v-if="((name_info || '').toLowerCase() === 'osyshome') || (plugin && (plugin.name || '').toLowerCase() === 'osyshome')">
                           <div class="mb-2">
+                            <label class="form-check-label" for="coreRepoUrl">
+                              {{ _('Url repository for update')}}
+                            </label>
+                            <input type="text" class="form-control" id="coreRepoUrl" v-model="settings.url">
+                          </div>
+                          <div class="mb-2">
                             <label class="form-label">{{ _('Branch repository for update')}}</label>
                             <select
                               class="form-select"
@@ -1732,8 +1738,8 @@
             const osysMeta = response.data.osyshome_enrichment
             if (osysMeta && this.osyshome) {
               Object.keys(osysMeta).forEach(key => {
-                // branch comes from SystemVar.core_branch (/api/plugins), not GitHub default_branch
-                if (key === 'branch') {
+                // branch/url/owner/repo come from SystemVar.core_* via /api/plugins
+                if (key === 'branch' || key === 'url' || key === 'owner' || key === 'repo') {
                   return
                 }
                 Vue.set(this.osyshome, key, osysMeta[key])
@@ -1931,9 +1937,9 @@
           this.readmeError = null
           this.readmeLoading = false
           this.readmeLoadedFor = null
-          this.settings = { branch: 'master' }
+          this.settings = { branch: 'master', url: '' }
           if (this.isCoreName(name)) {
-            await this.fetchCoreBranchValue()
+            await this.fetchCoreSettings()
           }
           $('#readme-tab').tab('show');
           $('#infoModal').modal('show')
@@ -2019,7 +2025,7 @@
             if (response.data && response.data.success) {
               const branch = this.parsePropertyApiResult(response.data.result) || 'master'
               if (!this.settings) {
-                Vue.set(this, 'settings', { branch: branch })
+                Vue.set(this, 'settings', { branch: branch, url: '' })
               } else {
                 Vue.set(this.settings, 'branch', branch)
               }
@@ -2035,6 +2041,39 @@
             console.error(error)
           }
           return (this.settings && this.settings.branch) || (this.plugin && this.plugin.branch) || 'master'
+        },
+        async fetchCoreUrlValue() {
+          const fallback = (this.osyshome && this.osyshome.url) || 'https://github.com/Anisan/osysHome'
+          try {
+            const response = await axios.get('/api/property/SystemVar.core_url')
+            if (response.data && response.data.success) {
+              const url = this.parsePropertyApiResult(response.data.result) || fallback
+              if (!this.settings) {
+                Vue.set(this, 'settings', { branch: 'master', url: url })
+              } else {
+                Vue.set(this.settings, 'url', url)
+              }
+              if (this.osyshome) {
+                Vue.set(this.osyshome, 'url', url)
+              }
+              if (this.plugin && this.isCoreInfo) {
+                Vue.set(this.plugin, 'url', url)
+              }
+              return url
+            }
+          } catch (error) {
+            console.error(error)
+          }
+          if (this.settings) {
+            Vue.set(this.settings, 'url', fallback)
+          }
+          return fallback
+        },
+        async fetchCoreSettings() {
+          await Promise.all([
+            this.fetchCoreBranchValue(),
+            this.fetchCoreUrlValue(),
+          ])
         },
         async saveSettings(){
           const response = await axios.post("/api/plugins/"+this.plugin.name+"/settings", this.settings)
@@ -2052,22 +2091,34 @@
         },
         async saveSettingsCore(){
           const coreBranch = (this.settings && this.settings.branch) ? this.settings.branch : 'master'
+          const coreUrl = ((this.settings && this.settings.url) || '').trim() || 'https://github.com/Anisan/osysHome'
           try {
-            const response = await axios.post(
-              "/api/property/SystemVar.core_branch",
-              { data: coreBranch, source: 'Modules' },
-              { headers: { 'Content-Type': 'application/json' } }
-            )
-            this.resultSave = "Result: " + response.data.success
+            const [branchResponse, urlResponse] = await Promise.all([
+              axios.post(
+                "/api/property/SystemVar.core_branch",
+                { data: coreBranch, source: 'Modules' },
+                { headers: { 'Content-Type': 'application/json' } }
+              ),
+              axios.post(
+                "/api/property/SystemVar.core_url",
+                { data: coreUrl, source: 'Modules' },
+                { headers: { 'Content-Type': 'application/json' } }
+              ),
+            ])
+            this.resultSave = "Result: " + (branchResponse.data.success && urlResponse.data.success)
             Vue.set(this.settings, 'branch', coreBranch)
+            Vue.set(this.settings, 'url', coreUrl)
             if (this.osyshome) {
               Vue.set(this.osyshome, 'branch', coreBranch)
+              Vue.set(this.osyshome, 'url', coreUrl)
             }
             if (this.plugin && this.isCoreInfo) {
               Vue.set(this.plugin, 'branch', coreBranch)
+              Vue.set(this.plugin, 'url', coreUrl)
               this.historyLoading = true
               try {
                 await Promise.all([
+                  this.fetchBranches(this.plugin),
                   this.fetchCommits(this.plugin),
                   this.fetchReadme(),
                 ])
@@ -2076,7 +2127,7 @@
               }
             }
             await this.fetchPlugins()
-            await this.fetchCoreBranchValue()
+            await this.fetchCoreSettings()
           } catch (error) {
             console.error(error)
             this.resultSave = "Result: " + (error.response?.data?.error || error.response?.data?.message || error.message || 'error')

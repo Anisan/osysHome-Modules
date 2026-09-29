@@ -70,7 +70,7 @@ class Modules(BasePlugin):
         self.title = "Modules"
         self.description = """List modules"""
         self.category = "System"
-        self.version = "1.2"
+        self.version = "1.3"
         self.actions = ["search","cycle","widget"]
         self.author = "Eraser"
 
@@ -351,11 +351,11 @@ class Modules(BasePlugin):
         provider = 'github'
 
         if core:
-            owner = 'Anisan'
-            repo = 'osysHome'
+            owner, repo, url = self._get_core_repo_target()
             branch = getProperty("SystemVar.core_branch") or 'master'
             target_folder = os.path.join(Config.APP_DIR)
             module_name = 'osysHome'
+            provider = self._detect_repo_provider(url)
         else:
             name = (data.get('name') or '').strip()
             url = (data.get('url') or '').strip()
@@ -387,20 +387,15 @@ class Modules(BasePlugin):
         elif not branch:
             branch = 'master'
 
-        if core:
-            dt = self.download_and_extract_github_repo(
-                owner, repo, branch, commit, target_folder, step_callback=step,
-            )
-        else:
-            dt = self.download_and_extract_repo(
-                owner=owner,
-                repo=repo,
-                branch=branch,
-                commit=commit,
-                target_folder=target_folder,
-                repo_url=url,
-                step_callback=step,
-            )
+        dt = self.download_and_extract_repo(
+            owner=owner,
+            repo=repo,
+            branch=branch,
+            commit=commit,
+            target_folder=target_folder,
+            repo_url=url,
+            step_callback=step,
+        )
 
         self._set_operation_step(job_id, 'update_db', 'running')
         if core:
@@ -511,14 +506,15 @@ class Modules(BasePlugin):
             return jsonify({"status": "ok"}), 200
 
         if op == 'upgrade_core':
-            owner = 'Anisan'
-            repo = 'osysHome'
+            owner, repo, url = self._get_core_repo_target()
             commit = request.args.get('commit',None)
             branch = getProperty("SystemVar.core_branch")
             if branch is None:
                 branch = 'master'
             try:
-                dt = self.download_and_extract_github_repo(owner, repo, branch, commit, os.path.join(Config.APP_DIR))
+                dt = self.download_and_extract_repo(
+                    owner, repo, branch, commit, os.path.join(Config.APP_DIR), repo_url=url,
+                )
                 dt = convert_utc_to_local(dt)
                 setProperty("SystemVar.upgraded", dt, self.name)
                 setProperty("SystemVar.update", False, self.name)
@@ -612,6 +608,16 @@ class Modules(BasePlugin):
         }
         return self.render("modules.html", content)
 
+    DEFAULT_CORE_URL = 'https://github.com/Anisan/osysHome'
+
+    def _get_core_repo_target(self):
+        """Return (owner, repo, url) for osysHome core updates."""
+        url = (getProperty("SystemVar.core_url") or '').strip() or self.DEFAULT_CORE_URL
+        owner, repo = self.extract_owner_and_repo(url)
+        if not owner or not repo:
+            return 'Anisan', 'osysHome', self.DEFAULT_CORE_URL
+        return owner, repo, url
+
     def extract_owner_and_repo(self, url):
         """
         Parse repo owner/name from a URL like:
@@ -689,28 +695,21 @@ class Modules(BasePlugin):
         owner = (owner or '').strip() or None
         repo = (repo or '').strip() or None
 
-        # For non-GitHub providers the URL is the source of truth because
-        # the frontend may still carry stale GitHub enrichment fields
-        # (e.g. owner=Anisan) from the public catalog.
-        if url:
-            provider = self._detect_repo_provider(url)
-            if provider != 'github':
-                parsed_owner, parsed_repo = self.extract_owner_and_repo(url)
-                if parsed_owner and parsed_repo:
-                    return parsed_owner, parsed_repo
-
-        if owner and repo:
-            return owner, repo
-
+        # URL is the source of truth when present: frontend may still carry
+        # stale GitHub enrichment fields (e.g. owner=Anisan) from the catalog.
         if url:
             parsed_owner, parsed_repo = self.extract_owner_and_repo(url)
             if parsed_owner and parsed_repo:
                 return parsed_owner, parsed_repo
 
+        if owner and repo:
+            return owner, repo
+
         if module_name:
             name = module_name.strip()
             if name.lower() == 'osyshome':
-                return 'Anisan', 'osysHome'
+                owner, repo, _url = self._get_core_repo_target()
+                return owner, repo
             if name.startswith('osysHome-'):
                 return 'Anisan', name
             return 'Anisan', f'osysHome-{name}'
@@ -1745,14 +1744,16 @@ class Modules(BasePlugin):
         if not update:
             branch = getProperty("SystemVar.core_branch")
             last_known = getProperty("SystemVar.upgraded")
+            owner, repo, core_url = self._get_core_repo_target()
             if last_known:
                 has_new, new_date = self.check_for_new_commits(
-                    repo_owner="Anisan",
-                    repo_name="osysHome",
+                    repo_owner=owner,
+                    repo_name=repo,
                     last_known_date=last_known,
                     branch=branch,
                     github_token=self.config.get('token',None),
                     assume_local_naive=True,
+                    repo_url=core_url,
                 )
                 if has_new:
                     setProperty("SystemVar.update", True, self.name)
