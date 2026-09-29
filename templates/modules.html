@@ -548,12 +548,15 @@
       </div>
       <div v-else class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-2">
         <div class="col" v-if="osyshome">
-          <div class="card module-card p-3">
+          <div
+            class="card module-card p-3"
+            :class="{'module-card-has-badges': hasCustomRepoUrl(osyshome)}"
+          >
             <div class="d-flex gap-3 align-items-start">
               <img src="{{ config.ASSETS_ROOT }}/images/logo-dark.png" class="module-icon" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'" alt="osysHome">
               <div class="flex-grow-1 min-w-0">
                 <div class="module-title d-flex flex-wrap align-items-center gap-1">
-                  <a :href="osyshome.url" target="_blank" @click.stop>[[ osyshome.name ]]</a>
+                  <a :href="repoUrlFor(osyshome)" target="_blank" @click.stop>[[ osyshome.name ]]</a>
                   <span class="badge text-bg-primary">{{ _('Core') }}</span>
                   <span v-if="osyshome.stars" class="text-warning"><i class="fa-solid fa-star"></i> [[osyshome.stars]]</span>
                 </div>
@@ -579,7 +582,7 @@
                     </button>
                   </li>
                   <li>
-                    <a class="dropdown-item" :href="osyshome.url" target="_blank">
+                    <a class="dropdown-item" :href="repoUrlFor(osyshome)" target="_blank">
                       <i class="fab fa-github"></i>GitHub
                     </a>
                   </li>
@@ -590,6 +593,18 @@
                   </li>
                 </ul>
               </div>
+            </div>
+            <div
+              v-if="hasCustomRepoUrl(osyshome)"
+              class="module-corner-badges"
+            >
+              <span
+                class="badge text-bg-info module-badge-custom-repo"
+                :title="repoUrlFor(osyshome)"
+              >
+                <i class="fas fa-link"></i>
+                <span class="module-badge-custom-repo-label">{{ _('Custom repo') }}</span>
+              </span>
             </div>
           </div>
         </div>
@@ -735,12 +750,15 @@
         </div>
         <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 row-cols-xxl-4 g-2">
         <div class="col" v-if="osyshome && osyshome.update">
-          <div class="card module-card p-3 border-warning">
+          <div
+            class="card module-card p-3 border-warning"
+            :class="{'module-card-has-badges': hasCustomRepoUrl(osyshome)}"
+          >
             <div class="d-flex gap-3 align-items-start">
               <img src="{{ config.ASSETS_ROOT }}/images/logo-dark.png" class="module-icon" onError="this.src='{{ config.ASSETS_ROOT }}/images/module.png'" alt="osysHome">
               <div class="flex-grow-1 min-w-0">
                 <div class="module-title">
-                  <a :href="osyshome.url" target="_blank">[[ osyshome.name ]]</a>
+                  <a :href="repoUrlFor(osyshome)" target="_blank">[[ osyshome.name ]]</a>
                   <span class="badge text-bg-primary ms-1">{{ _('Core') }}</span>
                 </div>
                 <div class="module-meta mt-1">[[ osyshome.description ]]</div>
@@ -772,7 +790,7 @@
                     </button>
                   </li>
                   <li>
-                    <a class="dropdown-item" :href="osyshome.url" target="_blank">
+                    <a class="dropdown-item" :href="repoUrlFor(osyshome)" target="_blank">
                       <i class="fab fa-github"></i>GitHub
                     </a>
                   </li>
@@ -783,6 +801,18 @@
                   </li>
                 </ul>
               </div>
+            </div>
+            <div
+              v-if="hasCustomRepoUrl(osyshome)"
+              class="module-corner-badges"
+            >
+              <span
+                class="badge text-bg-info module-badge-custom-repo"
+                :title="repoUrlFor(osyshome)"
+              >
+                <i class="fas fa-link"></i>
+                <span class="module-badge-custom-repo-label">{{ _('Custom repo') }}</span>
+              </span>
             </div>
           </div>
         </div>
@@ -1053,7 +1083,13 @@
                             <label class="form-check-label" for="coreRepoUrl">
                               {{ _('Url repository for update')}}
                             </label>
-                            <input type="text" class="form-control" id="coreRepoUrl" v-model="settings.url">
+                            <input
+                              type="text"
+                              class="form-control"
+                              id="coreRepoUrl"
+                              v-model="settings.url"
+                              :placeholder="defaultCoreUrl"
+                            >
                           </div>
                           <div class="mb-2">
                             <label class="form-label">{{ _('Branch repository for update')}}</label>
@@ -1313,6 +1349,7 @@
           error: '{{ _("GitHub rate limit error message") }}',
         },
         githubRateLimitHint: '{{ _("Add a GitHub token in Modules settings to increase the limit.") }}',
+        defaultCoreUrl: 'https://github.com/Anisan/osysHome',
         osyshome:null,
         name_info:null,
         commits:null,
@@ -1573,7 +1610,14 @@
           if (!plugin) {
             return ''
           }
-          return plugin.url || plugin.html_url || ''
+          const url = String(plugin.url || plugin.html_url || '').trim()
+          if (url) {
+            return url
+          }
+          if (String(plugin.name || '').toLowerCase() === 'osyshome') {
+            return this.defaultCoreUrl
+          }
+          return ''
         },
         normalizeRepoUrl(url) {
           if (!url) {
@@ -1585,18 +1629,20 @@
           if (!plugin) {
             return false
           }
+          const name = String(plugin.name || '').toLowerCase()
+          const isCore = name === 'osyshome'
           const userUrl = String(plugin.url || '').trim()
+          // Empty core URL means official default — not custom
           if (!userUrl) {
             return false
           }
           if (!/github\.com/i.test(userUrl)) {
             return true
           }
-          const name = String(plugin.name || '').trim()
-          if (!name || name.toLowerCase() === 'osyshome') {
-            return this.normalizeRepoUrl(userUrl) !== this.normalizeRepoUrl('https://github.com/Anisan/osysHome')
+          if (isCore || !name) {
+            return this.normalizeRepoUrl(userUrl) !== this.normalizeRepoUrl(this.defaultCoreUrl)
           }
-          const expected = `https://github.com/Anisan/osysHome-${name}`
+          const expected = `https://github.com/Anisan/osysHome-${plugin.name}`
           return this.normalizeRepoUrl(userUrl) !== this.normalizeRepoUrl(expected)
         },
         docsCategoryFor(plugin) {
@@ -2043,11 +2089,13 @@
           return (this.settings && this.settings.branch) || (this.plugin && this.plugin.branch) || 'master'
         },
         async fetchCoreUrlValue() {
-          const fallback = (this.osyshome && this.osyshome.url) || 'https://github.com/Anisan/osysHome'
+          const fallback = (this.osyshome && this.osyshome.url) || this.defaultCoreUrl
           try {
             const response = await axios.get('/api/property/SystemVar.core_url')
             if (response.data && response.data.success) {
-              const url = this.parsePropertyApiResult(response.data.result) || fallback
+              // Empty value means official default
+              const raw = this.parsePropertyApiResult(response.data.result)
+              const url = raw || fallback || this.defaultCoreUrl
               if (!this.settings) {
                 Vue.set(this, 'settings', { branch: 'master', url: url })
               } else {
@@ -2065,9 +2113,9 @@
             console.error(error)
           }
           if (this.settings) {
-            Vue.set(this.settings, 'url', fallback)
+            Vue.set(this.settings, 'url', fallback || this.defaultCoreUrl)
           }
-          return fallback
+          return fallback || this.defaultCoreUrl
         },
         async fetchCoreSettings() {
           await Promise.all([
@@ -2091,7 +2139,7 @@
         },
         async saveSettingsCore(){
           const coreBranch = (this.settings && this.settings.branch) ? this.settings.branch : 'master'
-          const coreUrl = ((this.settings && this.settings.url) || '').trim() || 'https://github.com/Anisan/osysHome'
+          const coreUrl = ((this.settings && this.settings.url) || '').trim() || this.defaultCoreUrl
           try {
             const [branchResponse, urlResponse] = await Promise.all([
               axios.post(
