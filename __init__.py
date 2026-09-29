@@ -70,7 +70,7 @@ class Modules(BasePlugin):
         self.title = "Modules"
         self.description = """List modules"""
         self.category = "System"
-        self.version = "1.1"
+        self.version = "1.2"
         self.actions = ["search","cycle","widget"]
         self.author = "Eraser"
 
