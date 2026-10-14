@@ -1156,16 +1156,15 @@
                             <select
                               class="form-select"
                               aria-label="Select branch"
-                              :value="(settings && settings.branch) || 'master'"
-                              @change="settings.branch = $event.target.value"
+                              v-model="settings.branch"
                             >
                               <option
-                                v-if="!branches || !branches.length"
-                                :value="(settings && settings.branch) || 'master'"
+                                v-if="settings.branch && (!branches || !branches.some(b => b.name === settings.branch))"
+                                :value="settings.branch"
                               >
-                                [[ (settings && settings.branch) || 'master' ]]
+                                [[ settings.branch ]]
                               </option>
-                              <option v-for="item in branches" :value="item.name">[[item.name]]</option>
+                              <option v-for="item in branches" :key="item.name" :value="item.name">[[item.name]]</option>
                             </select>
                             <div class="form-text" v-if="branchLoading">{{ _('Loading...') }}</div>
                             <div class="form-text text-warning" v-else-if="branchError">[[ branchError ]]</div>
@@ -1507,10 +1506,9 @@
           return this.isCoreName(this.name_info)
         },
         coreBranchLabel() {
-          if (!this.isCoreInfo) {
-            return (this.plugin && this.plugin.branch) || '—'
-          }
-          return (this.settings && this.settings.branch) || (this.plugin && this.plugin.branch) || 'master'
+          return (this.settings && this.settings.branch)
+            || (this.plugin && this.plugin.branch)
+            || (this.isCoreInfo ? 'master' : '—')
         },
         filteredPlugins() {
           let data = this.plugins;
@@ -1704,9 +1702,7 @@
               ...this.githubRepoParams(plugin),
               per_page: 15,
             }
-            const branch = this.isCoreInfo
-              ? ((this.settings && this.settings.branch) || (plugin && plugin.branch))
-              : (plugin && plugin.branch)
+            const branch = (this.settings && this.settings.branch) || (plugin && plugin.branch)
             if (branch) {
               params.branch = branch
             }
@@ -1778,7 +1774,13 @@
               if (!meta) {
                 continue
               }
-              Object.keys(meta).forEach(key => Vue.set(plugin, key, meta[key]))
+              // branch/url — из БД (настройки модуля); не затирать default_branch с GitHub
+              Object.keys(meta).forEach(key => {
+                if (key === 'branch' || key === 'url') {
+                  return
+                }
+                Vue.set(plugin, key, meta[key])
+              })
             }
 
             const osysMeta = response.data.osyshome_enrichment
@@ -1983,27 +1985,33 @@
           this.readmeError = null
           this.readmeLoading = false
           this.readmeLoadedFor = null
-          this.settings = { branch: 'master', url: '' }
+          // Стартовые значения из списка плагинов; settings API уточнит дальше
+          this.settings = {
+            branch: (this.plugin && this.plugin.branch) || 'master',
+            url: (this.plugin && this.plugin.url) || '',
+          }
           if (this.isCoreName(name)) {
             await this.fetchCoreSettings()
+          } else if (installed && this.plugin) {
+            // Сначала settings — иначе History/README уйдут на временный master
+            this.settingsLoading = true
+            try {
+              await this.fetchSettings(this.plugin.name)
+            } finally {
+              this.settingsLoading = false
+            }
           }
           $('#readme-tab').tab('show');
           $('#infoModal').modal('show')
 
-          const tasks = [
-            this.fetchBranches(this.plugin),
-            this.fetchCommits(this.plugin),
-            this.fetchReadme(),
-          ]
-          if (installed && !this.isCoreName(name)) {
-            tasks.push(this.fetchSettings(this.plugin.name))
-          }
-
           try {
-            await Promise.all(tasks)
+            await Promise.all([
+              this.fetchBranches(this.plugin),
+              this.fetchCommits(this.plugin),
+              this.fetchReadme(),
+            ])
           } finally {
             this.historyLoading = false
-            this.settingsLoading = false
           }
         },
         loadReadme() {
@@ -2031,9 +2039,7 @@
               lang: this.currentLang,
               ...this.githubRepoParams(this.plugin),
             }
-            const readmeBranch = this.isCoreInfo
-              ? ((this.settings && this.settings.branch) || (this.plugin && this.plugin.branch))
-              : (this.plugin && this.plugin.branch)
+            const readmeBranch = (this.settings && this.settings.branch) || (this.plugin && this.plugin.branch)
             if (readmeBranch) {
               params.branch = readmeBranch
             }
@@ -2126,11 +2132,35 @@
         async saveSettings(){
           const response = await axios.post("/api/plugins/"+this.plugin.name+"/settings", this.settings)
           this.resultSave = "Result: " + response.data.message
+          if (this.plugin && this.settings) {
+            if (this.settings.branch !== undefined) {
+              Vue.set(this.plugin, 'branch', this.settings.branch)
+            }
+            if (this.settings.url !== undefined) {
+              Vue.set(this.plugin, 'url', this.settings.url)
+            }
+          }
           await this.fetchPlugins()
           if (this.plugin) {
             const local = this.plugins.find(p => p.name === this.plugin.name)
             if (local) {
               Vue.set(this.plugin, 'level_logging', local.level_logging)
+              if (local.branch !== undefined && local.branch !== null) {
+                Vue.set(this.plugin, 'branch', local.branch)
+              }
+              if (local.url !== undefined && local.url !== null) {
+                Vue.set(this.plugin, 'url', local.url)
+              }
+            }
+            this.historyLoading = true
+            try {
+              await Promise.all([
+                this.fetchBranches(this.plugin),
+                this.fetchCommits(this.plugin),
+                this.fetchReadme(),
+              ])
+            } finally {
+              this.historyLoading = false
             }
           }
           setTimeout(() => {

@@ -70,7 +70,7 @@ class Modules(BasePlugin):
         self.title = "Modules"
         self.description = """List modules"""
         self.category = "System"
-        self.version = "1.3"
+        self.version = "1.4"
         self.actions = ["search","cycle","widget"]
         self.author = "Eraser"
 
@@ -1217,11 +1217,12 @@ class Modules(BasePlugin):
 
             folder_path = os.path.join(Config.PLUGINS_FOLDER, short_name)
             if os.path.isdir(folder_path):
+                # branch не включаем: у установленного модуля ветка берётся из БД
                 enrich = {
                     "stars": info["stars"],
                     "owner": info["owner"],
                     "repo": info["repo"],
-                    "branch": info["branch"],
+                    "default_branch": info["branch"],
                     "image": f"/{short_name}/static/{short_name}.png",
                     "html_url": info["url"],
                 }
