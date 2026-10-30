@@ -70,7 +70,7 @@ class Modules(BasePlugin):
         self.title = "Modules"
         self.description = """List modules"""
         self.category = "System"
-        self.version = "1.4"
+        self.version = "1.7"
         self.actions = ["search","cycle","widget"]
         self.author = "Eraser"
 
@@ -217,9 +217,25 @@ class Modules(BasePlugin):
                 })
 
     def _init_operation_steps(self, op):
-        return [{"id": step_id, "status": "pending", "message": None} for step_id in OPERATION_STEP_IDS[op]]
+        return [
+            {"id": step_id, "status": "pending", "message": None, "progress": None}
+            for step_id in OPERATION_STEP_IDS[op]
+        ]
 
-    def _set_operation_step(self, job_id, step_id, status, message=None):
+    def _finalize_step_progress(self, progress):
+        """На done оставляем последний прогресс и добиваем до 100%."""
+        if not progress:
+            return None
+        finalized = dict(progress)
+        total = finalized.get('total')
+        if total:
+            finalized['percent'] = 100
+            finalized['downloaded'] = total
+        elif finalized.get('percent') is not None:
+            finalized['percent'] = 100
+        return finalized
+
+    def _set_operation_step(self, job_id, step_id, status, message=None, progress=None):
         with _operation_lock:
             job = _operation_jobs.get(job_id)
             if not job:
@@ -231,6 +247,13 @@ class Modules(BasePlugin):
                         step['message'] = message
                     elif status != 'running':
                         step['message'] = None
+                    if progress is not None:
+                        step['progress'] = progress
+                    elif status == 'done':
+                        # Не стираем прогресс — иначе UI не успевает его увидеть
+                        step['progress'] = self._finalize_step_progress(step.get('progress'))
+                    elif status == 'pending':
+                        step['progress'] = None
                     break
 
     def _set_running_operation_step_message(self, job_id, message):
@@ -242,6 +265,202 @@ class Modules(BasePlugin):
                 if step['status'] == 'running':
                     step['message'] = message
                     break
+
+    def _download_timeout(self):
+        """(connect, read) — длинный read для больших архивов."""
+        connect = int(Config.HTTP_REQUEST_TIMEOUT or 15)
+        read = max(connect * 20, 300)
+        return (connect, read)
+
+    def _write_response_with_progress(self, response, local_filename, step_callback=None):
+        """Пишет stream-ответ в файл и обновляет progress шага download."""
+        def report(progress):
+            if step_callback:
+                step_callback('download', 'running', progress=progress)
+
+        total = None
+        content_length = response.headers.get('Content-Length')
+        if content_length:
+            try:
+                total = int(content_length)
+                if total <= 0:
+                    total = None
+            except (TypeError, ValueError):
+                total = None
+
+        downloaded = 0
+        last_report_at = 0.0
+        last_percent = -1
+        last_downloaded_report = -1
+        chunk_size = 64 * 1024
+
+        # Сразу, до чтения тела — иначе быстрый download не попадает в poll
+        report({
+            'percent': 0 if total else None,
+            'downloaded': 0,
+            'total': total,
+            'unit': 'bytes',
+        })
+
+        with open(local_filename, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if not chunk:
+                    continue
+                f.write(chunk)
+                downloaded += len(chunk)
+                now = time.monotonic()
+                percent = None
+                if total:
+                    percent = min(100, int(downloaded * 100 / total))
+                # Чаще без Content-Length: по объёму и времени
+                should_report = (
+                    (now - last_report_at) >= 0.1
+                    or (percent is not None and percent >= last_percent + 1)
+                    or (total and downloaded >= total)
+                    or (total is None and downloaded - last_downloaded_report >= 256 * 1024)
+                )
+                if should_report:
+                    report({
+                        'percent': percent,
+                        'downloaded': downloaded,
+                        'total': total,
+                        'unit': 'bytes',
+                    })
+                    last_report_at = now
+                    last_downloaded_report = downloaded
+                    if percent is not None:
+                        last_percent = percent
+
+        report({
+            'percent': 100 if total else None,
+            'downloaded': downloaded,
+            'total': total if total else downloaded,
+            'unit': 'bytes',
+        })
+        return downloaded
+
+    def _download_file_with_progress(self, url, local_filename, step_callback=None, headers=None):
+        """
+        Потоковая загрузка файла с прогрессом.
+        Возвращает Response (уже прочитанный body записан в файл при status 200).
+        При ошибке сети пробрасывает RequestException.
+        """
+        response = requests.get(
+            url,
+            stream=True,
+            timeout=self._download_timeout(),
+            headers=headers or {},
+        )
+        if response.status_code == 200:
+            try:
+                self._write_response_with_progress(response, local_filename, step_callback)
+            finally:
+                response.close()
+        return response
+
+    def _make_count_progress_reporter(self, step_callback, step_id, unit='files'):
+        """Троттлинг отчётов прогресса по счётчику (файлы, таблицы)."""
+        state = {'last_at': 0.0, 'last_percent': -1}
+
+        def report(current, total):
+            if not step_callback:
+                return
+            total = int(total or 0)
+            current = int(current or 0)
+            if total <= 0:
+                progress = {
+                    'percent': None,
+                    'downloaded': current,
+                    'total': None,
+                    'unit': unit,
+                }
+                step_callback(step_id, 'running', progress=progress)
+                return
+
+            percent = min(100, int(current * 100 / total))
+            now = time.monotonic()
+            should_report = (
+                current >= total
+                or current <= 1
+                or (now - state['last_at']) >= 0.1
+                or percent >= state['last_percent'] + 1
+            )
+            if not should_report:
+                return
+            step_callback(step_id, 'running', progress={
+                'percent': percent,
+                'downloaded': current,
+                'total': total,
+                'unit': unit,
+            })
+            state['last_at'] = now
+            state['last_percent'] = percent
+
+        return report
+
+    def _extract_zip_with_progress(self, local_filename, target_folder, step_callback=None):
+        """Распаковка zip с прогрессом только по файлам (без каталогов)."""
+        report = self._make_count_progress_reporter(step_callback, 'extract', unit='files')
+        with zipfile.ZipFile(local_filename, 'r') as zip_ref:
+            members = [
+                info for info in zip_ref.infolist()
+                if not info.is_dir()
+            ]
+            total = len(members)
+            report(0, total)
+            for index, member in enumerate(members, 1):
+                zip_ref.extract(member, target_folder)
+                report(index, total)
+
+    def _copy_tree_with_progress(self, source_folder, target_folder, step_callback=None, step_id='install_files'):
+        """Копирование файлов из source в target с прогрессом."""
+        report = self._make_count_progress_reporter(step_callback, step_id, unit='files')
+        file_rels = []
+        for root, _dirs, files in os.walk(source_folder):
+            for name in files:
+                abs_path = os.path.join(root, name)
+                rel = os.path.relpath(abs_path, source_folder)
+                file_rels.append(rel)
+
+        total = len(file_rels)
+        report(0, total)
+        if total == 0:
+            # Пустая папка — как раньше создаём целевую
+            os.makedirs(target_folder, exist_ok=True)
+            report(0, 0)
+            return
+
+        for index, rel in enumerate(file_rels, 1):
+            src = os.path.join(source_folder, rel)
+            dst = os.path.join(target_folder, rel)
+            parent = os.path.dirname(dst)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            shutil.copy2(src, dst)
+            report(index, total)
+
+    def _rmtree_with_progress(self, folder, step_callback=None, step_id='remove_files'):
+        """Удаление дерева файлов с прогрессом, затем очистка каталогов."""
+        report = self._make_count_progress_reporter(step_callback, step_id, unit='files')
+        if not os.path.exists(folder):
+            report(0, 0)
+            return
+
+        file_paths = []
+        for root, _dirs, files in os.walk(folder):
+            for name in files:
+                file_paths.append(os.path.join(root, name))
+
+        total = len(file_paths)
+        report(0, total)
+        for index, path in enumerate(file_paths, 1):
+            try:
+                os.remove(path)
+            except OSError as ex:
+                self.logger.warning("Не удалось удалить файл %s: %s", path, ex)
+            report(index, total)
+
+        shutil.rmtree(folder, ignore_errors=True)
 
     def _get_github_user_status(self):
         with _github_user_status_lock:
@@ -275,8 +494,8 @@ class Modules(BasePlugin):
             job['error'] = error
 
     def _operation_step_callback(self, job_id):
-        def callback(step_id, status, message=None):
-            self._set_operation_step(job_id, step_id, status, message)
+        def callback(step_id, status, message=None, progress=None):
+            self._set_operation_step(job_id, step_id, status, message, progress)
         return callback
 
     def _register_installed_module(self, name, owner, repo, updated):
@@ -423,20 +642,30 @@ class Modules(BasePlugin):
         self._set_operation_step(job_id, 'drop_tables', 'running')
         with session_scope() as session:
             try:
+                tables = []
                 for _, model in db.Model.registry._class_registry.items():
                     if hasattr(model, '__tablename__') and hasattr(model, '__table__'):
                         table_name = model.__tablename__
                         module_name = model.__module__.split(".")[1]
                         if module_name == name:
-                            self.logger.info(f"Drop table {table_name}")
-                            query = text(f"DROP TABLE {table_name};")
-                            session.execute(query)
+                            tables.append(table_name)
+
+                step_cb = self._operation_step_callback(job_id)
+                report_tables = self._make_count_progress_reporter(
+                    step_cb, 'drop_tables', unit='files',
+                )
+                report_tables(0, len(tables))
+                for index, table_name in enumerate(tables, 1):
+                    self.logger.info(f"Drop table {table_name}")
+                    query = text(f"DROP TABLE {table_name};")
+                    session.execute(query)
+                    report_tables(index, len(tables))
                 self._set_operation_step(job_id, 'drop_tables', 'done')
 
                 self._set_operation_step(job_id, 'remove_files', 'running')
                 folder_module = os.path.join(Config.PLUGINS_FOLDER, name)
                 if os.path.exists(folder_module):
-                    shutil.rmtree(folder_module)
+                    self._rmtree_with_progress(folder_module, step_cb, 'remove_files')
                     self.logger.info(f"Deleted folder '{folder_module}'.")
                 self._set_operation_step(job_id, 'remove_files', 'done')
 
@@ -1253,9 +1482,9 @@ class Modules(BasePlugin):
         return data
 
     def download_and_extract_github_repo(self, owner, repo, branch, commit=None, target_folder='.', step_callback=None):
-        def step(step_id, status, message=None):
+        def step(step_id, status, message=None, progress=None):
             if step_callback:
-                step_callback(step_id, status, message)
+                step_callback(step_id, status, message, progress)
 
         dt = get_now_to_utc()
         if commit is None:
@@ -1278,23 +1507,37 @@ class Modules(BasePlugin):
         step('download', 'running')
         self.logger.info("Downloading %s...", url)
         try:
-            response = requests.get(url, timeout=Config.HTTP_REQUEST_TIMEOUT)
+            response = requests.get(
+                url,
+                stream=True,
+                timeout=self._download_timeout(),
+            )
         except requests.exceptions.RequestException as ex:
             step('download', 'error', str(ex))
             raise Exception(f"Failed to download the file: {ex}") from ex
 
-        if response.status_code == 403 and 'rate limit' in response.text.lower():
-            message = self._friendly_github_error(403, 'API rate limit exceeded')
-            step('download', 'error', message)
-            raise Exception(message)
+        if response.status_code == 403:
+            body = (response.text or '').lower()
+            response.close()
+            if 'rate limit' in body:
+                message = self._friendly_github_error(403, 'API rate limit exceeded')
+                step('download', 'error', message)
+                raise Exception(message)
 
         if response.status_code != 200:
             message = f"Failed to download the file: HTTP {response.status_code}"
+            response.close()
             step('download', 'error', message)
             raise Exception(message)
 
-        with open(local_filename, 'wb') as f:
-            f.write(response.content)
+        try:
+            self._write_response_with_progress(response, local_filename, step_callback)
+        except Exception as ex:
+            response.close()
+            step('download', 'error', str(ex))
+            raise Exception(f"Failed to download the file: {ex}") from ex
+        finally:
+            response.close()
         self.logger.info(f"Downloaded {local_filename}")
         step('download', 'done')
 
@@ -1306,8 +1549,7 @@ class Modules(BasePlugin):
         step('extract', 'running')
         self.logger.info(f"Extracting {local_filename} to {temp_extract_folder}...")
         try:
-            with zipfile.ZipFile(local_filename, 'r') as zip_ref:
-                zip_ref.extractall(temp_extract_folder)
+            self._extract_zip_with_progress(local_filename, temp_extract_folder, step_callback)
         except (zipfile.BadZipFile, OSError) as ex:
             step('extract', 'error', str(ex))
             raise
@@ -1323,13 +1565,11 @@ class Modules(BasePlugin):
             message = f"Archive folder not found: {inner_folder}"
             step('install_files', 'error', message)
             raise Exception(message)
-        for item in os.listdir(inner_folder):
-            s = os.path.join(inner_folder, item)
-            d = os.path.join(target_folder, item)
-            if os.path.isdir(s):
-                shutil.copytree(s, d, dirs_exist_ok=True)
-            else:
-                shutil.copy2(s, d)
+        try:
+            self._copy_tree_with_progress(inner_folder, target_folder, step_callback, 'install_files')
+        except OSError as ex:
+            step('install_files', 'error', str(ex))
+            raise
         step('install_files', 'done')
 
         step('cleanup', 'running')
@@ -1365,9 +1605,9 @@ class Modules(BasePlugin):
         """
         Download and extract repository archive from Forgejo/Gitea-like servers.
         """
-        def step(step_id, status, message=None):
+        def step(step_id, status, message=None, progress=None):
             if step_callback:
-                step_callback(step_id, status, message)
+                step_callback(step_id, status, message, progress)
 
         if not repo_url:
             raise ValueError("repo_url is required for Forgejo download")
@@ -1408,21 +1648,30 @@ class Modules(BasePlugin):
             ]
 
         step('download', 'running')
-        response_content = None
+        downloaded_ok = False
         last_status = None
         last_error = None
         for url in archive_candidates:
             self.logger.info("Downloading %s...", url)
             try:
-                resp = requests.get(url, timeout=Config.HTTP_REQUEST_TIMEOUT)
+                resp = requests.get(
+                    url,
+                    stream=True,
+                    timeout=self._download_timeout(),
+                )
                 last_status = resp.status_code
                 if resp.status_code == 200:
-                    response_content = resp.content
+                    try:
+                        self._write_response_with_progress(resp, local_filename, step_callback)
+                        downloaded_ok = True
+                    finally:
+                        resp.close()
                     break
+                resp.close()
             except requests.exceptions.RequestException as ex:
                 last_error = str(ex)
 
-        if response_content is None:
+        if not downloaded_ok:
             if last_error:
                 message = f"Failed to download Forgejo archive: {last_error}"
             else:
@@ -1430,8 +1679,6 @@ class Modules(BasePlugin):
             step('download', 'error', message)
             raise Exception(message)
 
-        with open(local_filename, 'wb') as f:
-            f.write(response_content)
         self.logger.info(f"Downloaded {local_filename}")
         step('download', 'done')
 
@@ -1442,8 +1689,7 @@ class Modules(BasePlugin):
         step('extract', 'running')
         self.logger.info(f"Extracting {local_filename} to {temp_extract_folder}...")
         try:
-            with zipfile.ZipFile(local_filename, 'r') as zip_ref:
-                zip_ref.extractall(temp_extract_folder)
+            self._extract_zip_with_progress(local_filename, temp_extract_folder, step_callback)
         except (zipfile.BadZipFile, OSError) as ex:
             step('extract', 'error', str(ex))
             raise
@@ -1489,13 +1735,11 @@ class Modules(BasePlugin):
             step('install_files', 'error', message)
             raise Exception(message)
 
-        for item in os.listdir(inner_folder):
-            s = os.path.join(inner_folder, item)
-            d = os.path.join(target_folder, item)
-            if os.path.isdir(s):
-                shutil.copytree(s, d, dirs_exist_ok=True)
-            else:
-                shutil.copy2(s, d)
+        try:
+            self._copy_tree_with_progress(inner_folder, target_folder, step_callback, 'install_files')
+        except OSError as ex:
+            step('install_files', 'error', str(ex))
+            raise
         step('install_files', 'done')
 
         step('cleanup', 'running')

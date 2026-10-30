@@ -453,6 +453,48 @@
     word-break: break-word;
   }
 
+  .modules-operation-step-progress {
+    margin-top: 0.4rem;
+  }
+
+  .modules-operation-step-progress .progress {
+    height: 5px;
+  }
+
+  .modules-operation-step-progress-text {
+    font-size: 0.75rem;
+    margin-top: 0.2rem;
+  }
+
+  .modules-history-installed-badge {
+    cursor: pointer;
+    user-select: none;
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .modules-history-installed-badge .modules-history-reinstall-label {
+    display: none;
+  }
+
+  .modules-history-installed-badge:hover,
+  .modules-history-installed-badge:focus-visible {
+    background-color: var(--bs-warning) !important;
+    color: #000 !important;
+    border-color: var(--bs-warning);
+    outline: none;
+  }
+
+  .modules-history-installed-badge:hover .modules-history-installed-label,
+  .modules-history-installed-badge:focus-visible .modules-history-installed-label {
+    display: none;
+  }
+
+  .modules-history-installed-badge:hover .modules-history-reinstall-label,
+  .modules-history-installed-badge:focus-visible .modules-history-reinstall-label {
+    display: inline;
+  }
+
   .modules-operation-batch {
     max-height: min(55vh, calc(100vh - 16rem));
     overflow-y: auto;
@@ -1055,7 +1097,19 @@
                               <p class="opacity-75 modules-history-author">[[item.commit.author.name]]</p>
                             </div>
                             <div class="modules-history-side">
-                              <span v-if="item.installed" class="badge bg-success">{{ _('Installed')}}</span>
+                              <a
+                                v-if="item.installed"
+                                href="#"
+                                class="badge bg-success mb-2 modules-history-installed-badge"
+                                role="button"
+                                tabindex="0"
+                                @click.stop.prevent="reinstallCommit(item)"
+                                @keydown.enter.prevent="reinstallCommit(item)"
+                                @keydown.space.prevent="reinstallCommit(item)"
+                              >
+                                <span class="modules-history-installed-label">{{ _('Installed')}}</span>
+                                <span class="modules-history-reinstall-label"><i class="fa-solid fa-rotate"></i> {{ _('Reinstall')}}</span>
+                              </a>
                               <span v-else>
                                 <a
                                   v-if="plugin.name == 'osysHome'"
@@ -1245,6 +1299,18 @@
                       class="modules-operation-step-message"
                       :class="step.status === 'error' ? 'text-danger' : 'text-muted'"
                     >[[ operationStepMessageDisplay(step) ]]</div>
+                    <div v-if="operationStepShowProgress(step)" class="modules-operation-step-progress">
+                      <div class="progress" role="progressbar" :aria-valuenow="operationStepProgressWidth(step) || 0" aria-valuemin="0" aria-valuemax="100">
+                        <div
+                          class="progress-bar bg-success"
+                          :class="{'progress-bar-striped progress-bar-animated': step.status === 'running' && operationStepProgressWidth(step) == null}"
+                          :style="operationStepProgressWidth(step) != null ? {width: operationStepProgressWidth(step) + '%'} : {width: '100%'}"
+                        ></div>
+                      </div>
+                      <div v-if="operationStepProgressText(step)" class="modules-operation-step-progress-text text-muted">
+                        [[ operationStepProgressText(step) ]]
+                      </div>
+                    </div>
                   </div>
                 </li>
               </ul>
@@ -1270,6 +1336,18 @@
                     class="modules-operation-step-message"
                     :class="step.status === 'error' ? 'text-danger' : 'text-muted'"
                   >[[ operationStepMessageDisplay(step) ]]</div>
+                  <div v-if="operationStepShowProgress(step)" class="modules-operation-step-progress">
+                    <div class="progress" role="progressbar" :aria-valuenow="operationStepProgressWidth(step) || 0" aria-valuemin="0" aria-valuemax="100">
+                      <div
+                        class="progress-bar bg-success"
+                        :class="{'progress-bar-striped progress-bar-animated': step.status === 'running' && operationStepProgressWidth(step) == null}"
+                        :style="operationStepProgressWidth(step) != null ? {width: operationStepProgressWidth(step) + '%'} : {width: '100%'}"
+                      ></div>
+                    </div>
+                    <div v-if="operationStepProgressText(step)" class="modules-operation-step-progress-text text-muted">
+                      [[ operationStepProgressText(step) ]]
+                    </div>
+                  </div>
                 </div>
               </li>
             </ul>
@@ -2261,6 +2339,87 @@
         operationStepLabel(stepId) {
           return this.operationStepLabels[stepId] || stepId
         },
+        formatBytes(bytes) {
+          const value = Number(bytes)
+          if (!Number.isFinite(value) || value < 0) {
+            return ''
+          }
+          const units = ['B', 'KB', 'MB', 'GB', 'TB']
+          let size = value
+          let unitIndex = 0
+          while (size >= 1024 && unitIndex < units.length - 1) {
+            size /= 1024
+            unitIndex += 1
+          }
+          const digits = unitIndex === 0 ? 0 : (size < 10 ? 2 : 1)
+          return size.toFixed(digits) + ' ' + units[unitIndex]
+        },
+        operationStepShowProgress(step) {
+          if (!step) {
+            return false
+          }
+          if (step.status === 'running') {
+            return true
+          }
+          return step.status === 'done' && !!step.progress
+        },
+        operationStepProgressWidth(step) {
+          const progress = step && step.progress
+          if (!progress || progress.percent == null) {
+            // Для завершённого шага без % — полная полоска
+            if (step && step.status === 'done' && progress) {
+              return 100
+            }
+            return null
+          }
+          const percent = Number(progress.percent)
+          if (!Number.isFinite(percent)) {
+            return null
+          }
+          return Math.max(0, Math.min(100, percent))
+        },
+        operationStepProgressText(step) {
+          const progress = step && step.progress
+          if (!progress) {
+            return ''
+          }
+          const parts = []
+          if (progress.percent != null && Number.isFinite(Number(progress.percent))) {
+            parts.push(Math.max(0, Math.min(100, Number(progress.percent))) + '%')
+          }
+          const unit = progress.unit || 'bytes'
+          if (unit === 'bytes') {
+            const downloaded = this.formatBytes(progress.downloaded)
+            const total = this.formatBytes(progress.total)
+            if (downloaded && total) {
+              parts.push(downloaded + ' / ' + total)
+            } else if (downloaded) {
+              parts.push(downloaded)
+            }
+          } else {
+            const current = Number(progress.downloaded)
+            const total = Number(progress.total)
+            if (Number.isFinite(current) && Number.isFinite(total) && total >= 0) {
+              parts.push(current + ' / ' + total)
+            } else if (Number.isFinite(current) && current > 0) {
+              parts.push(String(current))
+            }
+          }
+          return parts.join(' · ')
+        },
+        reinstallCommit(item) {
+          if (!item || !item.sha || !this.plugin) {
+            return
+          }
+          if (this.plugin.name === 'osysHome') {
+            this.startUpgrade('?op=upgrade_core&commit=' + item.sha, this.plugin.name)
+            return
+          }
+          this.startUpgrade(
+            '?op=upgrade&name=' + this.plugin.name + '&url=' + this.repoUrlFor(this.plugin) + '&commit=' + item.sha,
+            this.plugin.title || this.plugin.name
+          )
+        },
         operationStepIcon(step) {
           if (step.status === 'done') {
             return 'fa-solid fa-check text-success'
@@ -2276,6 +2435,7 @@
         operationStepIconClass(step) {
           return ''
         },
+
         resetOperationState() {
           this.operationError = null
           this.operationDone = false
@@ -2313,7 +2473,7 @@
                 steps: steps,
               }
             }
-            await new Promise(resolve => setTimeout(resolve, 400))
+            await new Promise(resolve => setTimeout(resolve, 150))
           }
         },
         async runOperation(payload, onStepsUpdate) {
