@@ -1492,6 +1492,13 @@
         if (localStorage.modules_filter) {
           this.search = localStorage.modules_filter;
         }
+        // Push-обновления статуса операции/статуса GitHub через WebSocket
+        if (typeof socket !== 'undefined' && socket) {
+          this._onOperationStatus = (payload) => this.handleOperationStatus(payload)
+          this._onGithubStatus = (payload) => this.applyGithubStatus(payload)
+          socket.on('modules_operation_status', this._onOperationStatus)
+          socket.on('modules_github_status', this._onGithubStatus)
+        }
         const root = document.getElementById('list_modules')
         if (root) {
           this._onDropdownShow = (event) => {
@@ -1514,7 +1521,18 @@
         }
       },
       beforeDestroy() {
-        this.stopGithubStatusPolling()
+        if (typeof socket !== 'undefined' && socket) {
+          if (this._onOperationStatus) {
+            socket.off('modules_operation_status', this._onOperationStatus)
+          }
+          if (this._onGithubStatus) {
+            socket.off('modules_github_status', this._onGithubStatus)
+          }
+        }
+        if (this._operationWatchdog) {
+          clearTimeout(this._operationWatchdog)
+          this._operationWatchdog = null
+        }
         const root = document.getElementById('list_modules')
         if (root) {
           if (this._onDropdownShow) {
@@ -1528,9 +1546,6 @@
       watch: {
         search(value) {
           localStorage.modules_filter = value;
-        },
-        operationInProgress(value) {
-          this.updateGithubStatusPolling()
         },
       },
       computed: {
@@ -1826,7 +1841,6 @@
         async fetchGithub() {
           this.loadingGithub = true
           this.githubError = null
-          this.startGithubStatusPolling()
           try {
             const response = await axios.get('/api/Modules/github/catalog')
             if (!response.data.success) {
@@ -1882,7 +1896,6 @@
             this.pluginsGithub = []
           } finally {
             this.loadingGithub = false
-            this.stopGithubStatusPolling()
             await this.fetchGithubStatus(true)
           }
         },
@@ -1919,26 +1932,48 @@
             console.error(error)
           }
         },
-        startGithubStatusPolling() {
-          this.stopGithubStatusPolling()
-          this.fetchGithubStatus()
-          this._githubStatusTimer = setInterval(() => {
-            this.fetchGithubStatus()
-          }, 1000)
+        hasWebsocket() {
+          return typeof socket !== 'undefined' && socket && !socket.disconnected
         },
-        stopGithubStatusPolling() {
-          if (this._githubStatusTimer) {
-            clearInterval(this._githubStatusTimer)
-            this._githubStatusTimer = null
+        handleOperationStatus(payload) {
+          const waiter = this._operationWaiter
+          if (!waiter || !payload || payload.job_id !== waiter.jobId) {
+            return
+          }
+          if (this._operationWatchdog) {
+            clearTimeout(this._operationWatchdog)
+            this._operationWatchdog = null
+          }
+          const steps = payload.steps || []
+          if (waiter.onStepsUpdate) {
+            waiter.onStepsUpdate(steps)
+          } else {
+            this.operationSteps = steps
+          }
+          if (payload.done) {
+            this._operationWaiter = null
+            this.operationSuccess = !!payload.operation_success
+            this.operationError = payload.error || null
+            waiter.resolve({
+              success: !!payload.operation_success,
+              error: payload.error || null,
+              steps: steps,
+            })
           }
         },
-        updateGithubStatusPolling() {
-          if (this.operationInProgress) {
-            this.startGithubStatusPolling()
-          } else if (!this.loadingGithub) {
-            this.stopGithubStatusPolling()
-            this.fetchGithubStatus(true)
-          }
+        waitForOperationJob(jobId, onStepsUpdate) {
+          return new Promise((resolve, reject) => {
+            this._operationWaiter = { jobId, onStepsUpdate, resolve, reject }
+            // Страховка: если WebSocket-сообщения не приходят — переходим на REST-опрос
+            this._operationWatchdog = setTimeout(() => {
+              const waiter = this._operationWaiter
+              if (!waiter || waiter.jobId !== jobId) {
+                return
+              }
+              this._operationWaiter = null
+              this.pollOperationJob(jobId, onStepsUpdate).then(resolve, reject)
+            }, 2000)
+          })
         },
         async startCycle(plugin){
           this.closeOpenMenus()
@@ -2481,6 +2516,10 @@
           if (!response.data.success || !response.data.job_id) {
             throw new Error(response.data.message || 'Failed to start operation')
           }
+          // Статус шагов приходит через WebSocket (pollOperationJob — только фолбэк)
+          if (this.hasWebsocket()) {
+            return this.waitForOperationJob(response.data.job_id, onStepsUpdate)
+          }
           return this.pollOperationJob(response.data.job_id, onStepsUpdate)
         },
         async startOperation(op, payload, title) {
@@ -2491,7 +2530,6 @@
           this.operationTitle = title || payload.title || payload.name || ''
           this.resetOperationState()
           this.operationInProgress = true
-          this.startGithubStatusPolling()
           $('#upgradeModal').modal('show')
           let success = false
           try {
@@ -2503,7 +2541,6 @@
           } finally {
             this.operationInProgress = false
             this.operationDone = true
-            this.stopGithubStatusPolling()
             await this.fetchGithubStatus(true)
             await this.fetchData()
             if (success) {
@@ -2562,7 +2599,6 @@
             succeeded: 0,
             failed: [],
           }
-          this.startGithubStatusPolling()
           $('#upgradeModal').modal('show')
 
           for (let i = 0; i < items.length; i++) {
@@ -2602,7 +2638,6 @@
           this.operationInProgress = false
           this.operationDone = true
           this.operationSuccess = !this.operationAllProgress.failed.length
-          this.stopGithubStatusPolling()
           await this.fetchGithubStatus(true)
           await this.fetchData()
 

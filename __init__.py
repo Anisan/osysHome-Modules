@@ -27,7 +27,7 @@ from app.database import (
     convert_local_to_utc,
     row2dict,
 )
-from app.core.lib.common import addNotify, CategoryNotify
+from app.core.lib.common import addNotify, CategoryNotify, sendWebsocket
 from app.core.lib.object import setProperty, getProperty
 from plugins.Modules.forms.SettingForms import SettingsForm
 
@@ -196,6 +196,8 @@ class Modules(BasePlugin):
                 daemon=True,
             )
             thread.start()
+            # Сразу отдать начальное состояние (pending) через WebSocket
+            self._emit_operation_state(job_id)
             return jsonify({"success": True, "job_id": job_id})
 
         @self.blueprint.route(f"{base}/<job_id>", methods=["GET"])
@@ -255,6 +257,32 @@ class Modules(BasePlugin):
                     elif status == 'pending':
                         step['progress'] = None
                     break
+        self._emit_operation_state(job_id)
+
+    def _snapshot_operation_job(self, job_id):
+        """JSON-безопасный слепок состояния операции для WebSocket."""
+        with _operation_lock:
+            job = _operation_jobs.get(job_id)
+            if not job:
+                return None
+            return {
+                "job_id": job_id,
+                "op": job.get("op"),
+                "title": job.get("title"),
+                "done": job["done"],
+                "operation_success": job["success"],
+                "error": job.get("error"),
+                "steps": [dict(step) for step in job["steps"]],
+            }
+
+    def _emit_operation_state(self, job_id):
+        """Отправка состояния операции через WebSocket вместо REST-опроса."""
+        try:
+            payload = self._snapshot_operation_job(job_id)
+            if payload:
+                sendWebsocket('modules_operation_status', payload)
+        except Exception as ex:
+            self.logger.warning("Failed to emit operation status: %s", ex)
 
     def _set_running_operation_step_message(self, job_id, message):
         with _operation_lock:
@@ -265,6 +293,7 @@ class Modules(BasePlugin):
                 if step['status'] == 'running':
                     step['message'] = message
                     break
+        self._emit_operation_state(job_id)
 
     def _download_timeout(self):
         """(connect, read) — длинный read для больших архивов."""
@@ -467,10 +496,23 @@ class Modules(BasePlugin):
             return dict(_github_user_status)
 
     def _set_github_user_status(self, message=None, kind=None, waiting_seconds=0):
+        waiting_seconds = int(waiting_seconds or 0)
         with _github_user_status_lock:
+            changed = (
+                _github_user_status['message'] != message
+                or _github_user_status['kind'] != kind
+                or _github_user_status['waiting_seconds'] != waiting_seconds
+            )
             _github_user_status['message'] = message
             _github_user_status['kind'] = kind
-            _github_user_status['waiting_seconds'] = int(waiting_seconds or 0)
+            _github_user_status['waiting_seconds'] = waiting_seconds
+        if changed:
+            # Статус GitHub push-ится через WebSocket (в т.ч. вне операции —
+            # например, во время fetch каталога)
+            try:
+                sendWebsocket('modules_github_status', self._get_github_user_status())
+            except Exception as ex:
+                self.logger.warning("Failed to emit github status: %s", ex)
         if message:
             job_id = getattr(self, '_github_status_job_id', None)
             if job_id:
@@ -492,6 +534,7 @@ class Modules(BasePlugin):
             job['done'] = True
             job['success'] = success
             job['error'] = error
+        self._emit_operation_state(job_id)
 
     def _operation_step_callback(self, job_id):
         def callback(step_id, status, message=None, progress=None):
