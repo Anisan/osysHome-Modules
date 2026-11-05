@@ -70,7 +70,7 @@ class Modules(BasePlugin):
         self.title = "Modules"
         self.description = """List modules"""
         self.category = "System"
-        self.version = "1.7"
+        self.version = "1.8"
         self.actions = ["search","cycle","widget"]
         self.author = "Eraser"
 
@@ -307,15 +307,7 @@ class Modules(BasePlugin):
             if step_callback:
                 step_callback('download', 'running', progress=progress)
 
-        total = None
-        content_length = response.headers.get('Content-Length')
-        if content_length:
-            try:
-                total = int(content_length)
-                if total <= 0:
-                    total = None
-            except (TypeError, ValueError):
-                total = None
+        total = self._response_content_length(response)
 
         downloaded = 0
         last_report_at = 0.0
@@ -367,6 +359,26 @@ class Modules(BasePlugin):
             'unit': 'bytes',
         })
         return downloaded
+
+    def _response_content_length(self, response):
+        """Размер тела ответа из заголовков; None если неизвестен (chunked и т.п.)."""
+        for header in ('Content-Length', 'X-File-Size', 'X-Content-Length'):
+            raw = response.headers.get(header)
+            if not raw:
+                continue
+            try:
+                total = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if total > 0:
+                return total
+        # urllib3 иногда держит длину отдельно от заголовков
+        raw_len = getattr(getattr(response, 'raw', None), 'length', None)
+        try:
+            total = int(raw_len) if raw_len is not None else 0
+        except (TypeError, ValueError):
+            total = 0
+        return total if total > 0 else None
 
     def _download_file_with_progress(self, url, local_filename, step_callback=None, headers=None):
         """

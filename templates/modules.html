@@ -2375,6 +2375,10 @@
           return this.operationStepLabels[stepId] || stepId
         },
         formatBytes(bytes) {
+          // Number(null) === 0 — не путать «размер неизвестен» с нулём байт
+          if (bytes == null || bytes === '') {
+            return ''
+          }
           const value = Number(bytes)
           if (!Number.isFinite(value) || value < 0) {
             return ''
@@ -2424,19 +2428,22 @@
           }
           const unit = progress.unit || 'bytes'
           if (unit === 'bytes') {
-            const downloaded = this.formatBytes(progress.downloaded)
-            const total = this.formatBytes(progress.total)
-            if (downloaded && total) {
-              parts.push(downloaded + ' / ' + total)
-            } else if (downloaded) {
-              parts.push(downloaded)
+            const hasDownloaded = progress.downloaded != null && Number.isFinite(Number(progress.downloaded))
+            const hasTotal = progress.total != null && Number.isFinite(Number(progress.total)) && Number(progress.total) > 0
+            if (hasDownloaded && hasTotal) {
+              parts.push(this.formatBytes(progress.downloaded) + ' / ' + this.formatBytes(progress.total))
+            } else if (hasDownloaded && Number(progress.downloaded) > 0) {
+              // Без Content-Length (GitHub chunked) — только скачанный объём
+              parts.push(this.formatBytes(progress.downloaded))
             }
           } else {
+            const hasCurrent = progress.downloaded != null && Number.isFinite(Number(progress.downloaded))
+            const hasTotal = progress.total != null && Number.isFinite(Number(progress.total)) && Number(progress.total) > 0
             const current = Number(progress.downloaded)
             const total = Number(progress.total)
-            if (Number.isFinite(current) && Number.isFinite(total) && total >= 0) {
+            if (hasCurrent && hasTotal) {
               parts.push(current + ' / ' + total)
-            } else if (Number.isFinite(current) && current > 0) {
+            } else if (hasCurrent && current > 0) {
               parts.push(String(current))
             }
           }
